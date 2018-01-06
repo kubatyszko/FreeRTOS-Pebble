@@ -46,7 +46,7 @@ static App *_running_app;
 static App *_app_manifest_head;
 
 /* The manager thread needs only a small stack */
-#define APP_THREAD_MANAGER_STACK_SIZE 3000
+#define APP_THREAD_MANAGER_STACK_SIZE 300
 StackType_t _app_thread_manager_stack[APP_THREAD_MANAGER_STACK_SIZE];  // stack + heap for app (in words)
 
 // We are abusing the stack area to store the app too. These need different memory sizes
@@ -401,11 +401,7 @@ static void _appmanager_app_thread(void *parms)
     ApplicationHeader header;   // TODO change to malloc so we can free after load?
     char *app_name;
     AppMessage am;
-            bluetooth_init();
-for( ;; )
-{
-    vTaskDelay(1000);
-}
+
     for( ;; )
     {
         // Sleep waiting for the go signal. The app to start will be the parameter

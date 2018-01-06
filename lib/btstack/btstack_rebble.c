@@ -40,12 +40,7 @@ void bt_device_init(void)
     btstack_main(0, NULL);
     // go
     
-    //    I think this needs to be threaded...
-    // It does.
-    // XXX MASSIVE TODO 
     btstack_run_loop_execute();
-    
-    printf("WOOHOO?\n");
 }
 // BT stack needs these HAL implementations
 
@@ -160,6 +155,7 @@ void hal_uart_dma_receive_block(uint8_t *data, uint16_t size)
     hw_bluetooth_recv_dma((uint8_t *)data, size);
 }
 
+// extern void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 
 static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)
 {

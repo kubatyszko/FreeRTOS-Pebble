@@ -279,7 +279,6 @@ static void _button_message_thread(void *pvParameters)
  */
 static void _button_debounce_thread(void *pvParameters)
 {
-    printf("BD\n");
     for( ;; )
     {
         // sleep forever waiting for something on the interrupts to wake us

@@ -315,7 +315,7 @@ void snowy_display_reinit_dma(uint32_t *data, uint32_t length)
     dma_init_struct.DMA_DIR = DMA_DIR_MemoryToPeripheral;
     dma_init_struct.DMA_MemoryInc = DMA_MemoryInc_Enable;
     dma_init_struct.DMA_Memory0BaseAddr = (uint32_t)data;
-    dma_init_struct.DMA_BufferSize = 1;
+    dma_init_struct.DMA_BufferSize = length;
     dma_init_struct.DMA_PeripheralInc  = DMA_PeripheralInc_Disable;
     dma_init_struct.DMA_FIFOMode  = DMA_FIFOMode_Disable;
     dma_init_struct.DMA_PeripheralDataSize = DMA_MemoryDataSize_Byte;

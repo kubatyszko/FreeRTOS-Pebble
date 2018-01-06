@@ -32,32 +32,30 @@ void hardware_init(void)
 {
     platform_init();
     debug_init();
+    KERN_LOG("init", APP_LOG_LEVEL_INFO, "Debug Init");
     rcore_watchdog_init_early();
-//     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Debug Init");
-    
-//     bluetooth_init();
-    
     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Watchdog Init");
-//     power_init();
+    bluetooth_init();
+    KERN_LOG("init", APP_LOG_LEVEL_INFO, "Bluetooth Init");
+    power_init();
     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Power Init");
-//     flash_init();
+    flash_init();
     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Flash Init");
     //vibrate_init();
 //     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Vibro Init");
-//         display_init();
+    display_init();
     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Display Init");
-//     hw_display_start();
-//     rcore_buttons_init();
+    hw_display_start();
+    rcore_buttons_init();
     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Buttons Init");
-//     rtc_init();
+    rtc_init();
 //     rcore_ambient_init();
     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Ambiance Init");
-//     rcore_backlight_init();
+    rcore_backlight_init();
     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Backlight Init");
     platform_init_late();
     rcore_watchdog_init_late();
     KERN_LOG("init", APP_LOG_LEVEL_INFO, "watchdog is ticking");
-    
 }
 
 /*

@@ -8,10 +8,8 @@
 #include "stm32f4xx.h"
 #include "stdio.h"
 #include "string.h"
-#include "display.h"
 #include "log.h"
-#include "vibrate.h"
-#include "snowy_display.h"
+#include "FreeRTOS.h"
 #include <stm32f4xx_spi.h>
 #include <stm32f4xx_tim.h>
 #include "stm32_power.h"
@@ -25,10 +23,11 @@
 // clocks
 // 
 
+uint8_t hw_bluetooth_power_cycle(void);
+
 #define BT_SHUTD        GPIO_Pin_12
 volatile int tx_done, rx_done = 0;
 
-// volatile uint8_t teststr[] = "\nHello 2\nasdadasd\n\n";
 const uint8_t hci_reset_bytes[] = { 0x01, 0x03, 0x0c, 0x00 };
 
 char gbuf[10];
@@ -46,8 +45,6 @@ void _bt_reset_hci_dma(void)
     hw_bluetooth_recv_dma(gbuf, 7);
     hw_bluetooth_send_dma(hci_reset_bytes, sizeof(hci_reset_bytes));
     DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "HCI Reset Sleep");
-    // XXX really we should await DMA completion
- 
     
     int to = 0;
     while(!tx_done)
@@ -72,48 +69,6 @@ void _bt_reset_hci_dma(void)
         printf("0x%0x ", gbuf[i]);
     }
     printf("\n");
-    
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "TX Done");
-            IWDG_ReloadCounter();
-
-            return;
-    tx_done = 0;
-    // send magic HCI reset
-    hw_bluetooth_recv_dma(gbuf, 6);
-    hw_bluetooth_send_dma(hci_reset_bytes, sizeof(hci_reset_bytes));
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "2HCI Reset Sleep");
-    // XXX really we should await DMA completion
-//     do_delay_ms(120);
-    to = 0;
-    while(!tx_done)
-    {
-        if (to > 10)
-            break;
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "2TX...");
-        to++;
-    }
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "2TX Done");
-            IWDG_ReloadCounter();
-
-    do_delay_ms(1);
-    
-    
-    int i;
-    for (i = 0; i < 6; i++)
-    {       
-        _bt_read(buf, 1);
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "HCI 0x%0x", buf[0]);
-    }
-    return;
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "HCI Reset got %d bytes...", i);
-    char tbuf[150];
-    for(int j = 0; j < i; j++)
-    {
-        char tbuf2[50];
-        snprintf(tbuf2,"0x%02x ", buf[j]);
-        strcat(tbuf, tbuf2);
-    }
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "HCI bytes: ", tbuf);
 }
 
 void hw_bluetooth_init(void)
@@ -154,122 +109,35 @@ void hw_bluetooth_init(void)
     GPIO_Init(GPIOA, &gpio_init_bt);
     GPIO_PinAFConfig(GPIOA, GPIO_PinSource8, GPIO_AF_MCO);
    
-    // initialise BTStack....For later!
-    // bt_device_init();
-    
-    // all dem clocks (woo remove this)
-    stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOF);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOD);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOG);
-    stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_UART8);
-    stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_PWR);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
-    
     // configure DMA
      _usart1_init(115200);
     _bluetooth_dma_init();
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "TESTTTTTTTTTTT");
-    tx_done = 0;
-    rx_done = 0;
-    RCC_AHB1PeriphClockCmd (RCC_AHB1Periph_DMA2, ENABLE);
-//     char buf[100];
-     // send magic HCI reset
-//     const uint8_t hci_reset[] = { 0x01, 0x03, 0x0c, 0x00 };
-//     hw_bluetooth_recv_dma(buf, 7);
-//     hw_bluetooth_send_dma(hci_reset, sizeof(hci_reset));
-        // Well, lets go for broke. Dunno what this does
-   
-//      _bt_write("Hi\n", 3);
-//     hw_bluetooth_power_cycle();
+    
+    // Well, lets go for broke. Dunno what this does
     GPIO_SetBits(GPIOA, GPIO_Pin_4);
-      
-
-// USART_ITConfig(USART1, USART_IT_TXE, ENABLE);
-//  USART_ITConfig(USART1, USART_IT_TC, ENABLE);
-DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "hmmmm\n");
-
-// tx_done = 0;
-         USART_Cmd(USART1, ENABLE);
-//  USART_ITConfig(USART1, USART_IT_TC, ENABLE);
-//     USART_ITConfig(USART1, USART_IT_ERR, ENABLE);
-//     USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
-//      _bt_write("Hi\n", 3);
-//      _bt_write("O", 1);
-//      _bt_write("\n", 1);
-//      while(!tx_done);
-     
-// USART_ITConfig(USART1, USART_IT_TXE, DISABLE);
-//  USART_ITConfig(USART1, USART_IT_TC, DISABLE);
-//     _bt_write(hci_reset, sizeof(hci_reset));
-//      hw_bluetooth_send_dma(teststr, strlen(teststr));
-             uint16_t timeout = 10000;
-             hw_bluetooth_power_cycle();
-
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "HCI Reset");
     
-    // send magic HCI reset
-//     const uint8_t hci_reset[] = { 0x01, 0x03, 0x0c, 0x00 };
-   
-//     _bt_reset_hci_dma();
+    if (!hw_bluetooth_power_cycle())
+    {
+        DRV_LOG("BT", APP_LOG_LEVEL_ERROR, "Bluetooth Failed!\n");
+        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);     
+        stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
+        return;
+    }
     
-    /*
-  if (DMA_GetFlagStatus(DMA2_Stream7, DMA_FLAG_TEIF7) != RESET)
-  {
-      DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "TEIF\n");
-  }*/
-//   while (DMA_GetFlagStatus(DMA2_Stream7, DMA_FLAG_TCIF7) == RESET)
-//   {
-//   }
-//     while ((DMA_GetCmdStatus (DMA2_Stream7) != ENABLE) && (timeout-- > 0)) {
-//     }
-        
-//     while ((DMA_GetCmdStatus (DMA2_Stream7) != ENABLE)) {
-//     }
-    
-//     hw_bluetooth_send_dma(hci_reset, sizeof(hci_reset));
-//      _bt_write(hci_reset, sizeof(hci_reset));
-     
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "HCI Reset Done");
-//     while(!tx_done);
-//     DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "TX Done\n");
-//     while(!rx_done);
-//     
-//     DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BUF: %s\n", buf); 
-
-    // initialise BTStack....For later!
+    // initialise BTStack.... Go!
     bt_device_init();
     
-    // For now lets try a good old fashioned HCI command
-    // lets reboot
-    
-
-    
-    // Read it back. We should have something (7 bytes)
-/*
-    for (int i = 0; i < 10; i++)
-    {
-        IWDG_ReloadCounter();
-
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "To Wait...\n");
-        _bt_read(buf, 1);
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "Buf: %d\n", buf[0]);
-    }*/
     DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "Done...\n");
-    stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_USART1);
+
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-    stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
-    stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_UART8);
-    
+    stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);     
     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
-    stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
 }
 
 
 // reset Bluetooth using nShutdown
-void hw_bluetooth_power_cycle(void)
+uint8_t hw_bluetooth_power_cycle(void)
 {
     DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Reset...\n");
     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
@@ -324,7 +192,7 @@ void hw_bluetooth_power_cycle(void)
             stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
             stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
             stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_PWR);
-            return;
+            return 1;
         }
         do_delay_ms(1);
     }
@@ -335,6 +203,7 @@ void hw_bluetooth_power_cycle(void)
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_PWR);
     DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Failed? TERMINAL!\n");
+    return 0;
 }
 
 void _bluetooth_dma_init(void)
