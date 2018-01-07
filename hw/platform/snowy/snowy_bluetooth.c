@@ -71,7 +71,7 @@ void _bt_reset_hci_dma(void)
     printf("\n");
 }
 
-void hw_bluetooth_init(void)
+uint8_t hw_bluetooth_init(void)
 {
     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
@@ -116,13 +116,13 @@ void hw_bluetooth_init(void)
     // Well, lets go for broke. Dunno what this does
     GPIO_SetBits(GPIOA, GPIO_Pin_4);
     
-    if (!hw_bluetooth_power_cycle())
+    if (hw_bluetooth_power_cycle())
     {
-        DRV_LOG("BT", APP_LOG_LEVEL_ERROR, "Bluetooth Failed!\n");
+        DRV_LOG("BT", APP_LOG_LEVEL_ERROR, "Bluetooth Failed!");
         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);     
         stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
-        return;
+        return 1;
     }
     
     // initialise BTStack.... Go!
@@ -133,13 +133,15 @@ void hw_bluetooth_init(void)
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);     
     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
+    
+    return 0;
 }
 
 
 // reset Bluetooth using nShutdown
 uint8_t hw_bluetooth_power_cycle(void)
 {
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Reset...\n");
+    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Reset...");
     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
@@ -192,7 +194,7 @@ uint8_t hw_bluetooth_power_cycle(void)
             stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
             stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
             stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_PWR);
-            return 1;
+            return 0;
         }
         do_delay_ms(1);
     }
@@ -202,8 +204,8 @@ uint8_t hw_bluetooth_power_cycle(void)
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_PWR);
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Failed? TERMINAL!\n");
-    return 0;
+    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Failed? TERMINAL!");
+    return 1;
 }
 
 void _bluetooth_dma_init(void)

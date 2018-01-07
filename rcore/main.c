@@ -31,9 +31,9 @@ int main(void)
 void hardware_init(void)
 {
     platform_init();
+    rcore_watchdog_init_early();
     debug_init();
     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Debug Init");
-    rcore_watchdog_init_early();
     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Watchdog Init");
     bluetooth_init();
     KERN_LOG("init", APP_LOG_LEVEL_INFO, "Bluetooth Init");

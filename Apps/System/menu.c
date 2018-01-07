@@ -26,6 +26,13 @@ void menu_items_destroy(MenuItems *items)
         menu_items_destroy(items->back);
     if (items->capacity > 0)
         free(items->items);
+    for(uint8_t i = 0; i < items->count; i++)
+    {
+        if (items->items[i].text_requires_free)
+            free(items->items[i].text);
+        if (items->items[i].sub_text_requires_free)
+            free(items->items[i].sub_text);
+    }
     free(items);
 }
 

@@ -26,10 +26,19 @@ typedef struct {
 
 static Time s_last_time;
 
-static MenuItems* flash_dump_item_selected(const MenuItem *item)
+static MenuItems* settings_item_selected(const MenuItem *item)
 {
-    flash_dump();
-    return NULL;
+    MenuItems *items = menu_items_create(2);
+    char *buf = app_malloc(100);
+    snprintf(buf, 100, "En: %s. Err: %s", 
+             rebbleos_module_is_enabled(MODULE_BLUETOOTH) ? "YES" : "NO",
+             rebbleos_module_is_error(MODULE_BLUETOOTH) ? "YES" : "NO");
+    
+    menu_items_add(items, MenuItem("Bluetooth", buf, 22, false, true, NULL));
+    menu_items_add(items, MenuItem("Vibrate", "Low", 24, false, false, NULL));
+    
+    //flash_dump();
+    return items;
 }
 
 static MenuItems* watch_list_item_selected(const MenuItem *item);
@@ -65,7 +74,7 @@ static MenuItems* watch_list_item_selected(const MenuItem *item) {
             node = node->next;
             continue;
         }
-        menu_items_add(items, MenuItem(node->name, "", 25, app_item_selected));
+        menu_items_add(items, MenuItem(node->name, "", 25, false, false, app_item_selected));
 
         node = node->next;
     }
@@ -80,7 +89,6 @@ static void exit_to_watchface(struct Menu *menu, void *context)
 
 static void systemapp_window_load(Window *window)
 {
-    printf("WF load\n");
     Layer *window_layer = window_get_root_layer(s_main_window);
     GRect bounds = layer_get_unobstructed_bounds(window_layer);
 
@@ -93,10 +101,11 @@ static void systemapp_window_load(Window *window)
     menu_set_click_config_onto_window(s_menu, window);
 
     MenuItems *items = menu_items_create(4);
-    menu_items_add(items, MenuItem("Watchfaces", "All your faces", 25, watch_list_item_selected));
-    menu_items_add(items, MenuItem("Settings", "Move Along", 24, test_item_selected));
-    menu_items_add(items, MenuItem("RebbleOS", "... v0.0.0.1", 24, NULL));
-    menu_items_add(items, MenuItem("... Soon (TM)", NULL, 25, notification_item_selected));
+    // XXX add current face
+    menu_items_add(items, MenuItem("Watchfaces", "using: Default", 25, false, false, watch_list_item_selected));
+    menu_items_add(items, MenuItem("Settings", "", 24, false, false, settings_item_selected));
+    menu_items_add(items, MenuItem("RebbleOS", "... v0.0.0.1", 24, false, false, NULL));
+    menu_items_add(items, MenuItem("... Soon (TM)", NULL, 25, false, false, NULL));
     menu_set_items(s_menu, items);
 
     // Status Bar
@@ -115,7 +124,6 @@ static void systemapp_window_unload(Window *window)
 
 void systemapp_init(void)
 {
-    printf("init\n");
     s_main_window = window_create();
 
     window_set_window_handlers(s_main_window, (WindowHandlers) {

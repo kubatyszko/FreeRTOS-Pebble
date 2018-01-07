@@ -21,10 +21,12 @@ typedef struct MenuItem
     char *text;
     char *sub_text;
     uint16_t image_res_id;
+    bool text_requires_free;
+    bool sub_text_requires_free;
     MenuItemCallback on_select;
 } MenuItem;
 
-#define MenuItem(text, sub_text, image, on_select) ((MenuItem) { text, sub_text, image, on_select })
+#define MenuItem(text, sub_text, image, text_requires_free, sub_text_requires_free, on_select) ((MenuItem) { text, sub_text, image, text_requires_free, sub_text_requires_free, on_select })
 
 typedef struct MenuItems
 {

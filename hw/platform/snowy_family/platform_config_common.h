@@ -4,10 +4,10 @@
 /* Size of the app + stack + heap of the running app. 
    IN BYTES
  */ 
-#define MAX_APP_MEMORY_SIZE     90000
+#define MAX_APP_MEMORY_SIZE     60000
 
 /* Size of the stack in WORDS */
-#define MAX_APP_STACK_SIZE      7000
+#define MAX_APP_STACK_SIZE      5000
 
 // flash regions
 #define REGION_PRF_START        0x200000
