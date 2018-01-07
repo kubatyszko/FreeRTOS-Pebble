@@ -46,7 +46,15 @@ SRCS_all += lib/minilib/minilib.c
 SRCS_all += lib/minilib/sbrk.c
 SRCS_all += lib/minilib/dprint.c
 SRCS_all += lib/minilib/fmt.c
+SRCS_all += lib/minilib/unfmt.c
 SRCS_all += lib/minilib/rand.c
+SRCS_all += lib/musl/time/localtime.c
+SRCS_all += lib/musl/time/localtime_r.c
+SRCS_all += lib/musl/time/mktime.c
+SRCS_all += lib/musl/time/__secs_to_tm.c
+SRCS_all += lib/musl/time/__tm_to_secs.c
+SRCS_all += lib/musl/time/__year_to_secs.c
+SRCS_all += lib/musl/time/__month_to_secs.c
 
 SRCS_all += lib/neographics/src/common.c
 SRCS_all += lib/neographics/src/context.c
@@ -90,18 +98,24 @@ SRCS_all += rwatch/ui/layer/layer.c
 SRCS_all += rwatch/ui/layer/bitmap_layer.c
 SRCS_all += rwatch/ui/layer/menu_layer.c
 SRCS_all += rwatch/ui/layer/scroll_layer.c
+SRCS_all += rwatch/ui/layer/action_bar_layer.c
 SRCS_all += rwatch/ui/layer/text_layer.c
 SRCS_all += rwatch/ui/window.c
+SRCS_all += rwatch/ui/notification_window.c
 SRCS_all += rwatch/graphics/gbitmap.c
 SRCS_all += rwatch/graphics/graphics.c
 SRCS_all += rwatch/graphics/font_loader.c
 SRCS_all += rwatch/event/tick_timer_service.c
+SRCS_all += rwatch/ui/layer/status_bar_layer.c
 
 SRCS_all += Watchfaces/simple.c
 SRCS_all += Watchfaces/nivz.c
 
 SRCS_all += Apps/System/systemapp.c
 SRCS_all += Apps/System/menu.c
+
+SRCS_all += Apps/System/test.c
+SRCS_all += Apps/System/notification.c
 
 include hw/chip/stm32f4xx/config.mk
 include hw/chip/stm32f2xx/config.mk

@@ -8,6 +8,7 @@
 #include "rebbleos.h"
 #include "systemapp.h"
 #include "menu.h"
+#include "status_bar_layer.h"
 
 extern void flash_dump(void);
 
@@ -15,6 +16,8 @@ const char *systemapp_name = "System";
 
 static Window *s_main_window;
 static Menu *s_menu;
+
+StatusBarLayer *status_bar;
 
 typedef struct {
     uint8_t hours;
@@ -34,6 +37,18 @@ static MenuItems* watch_list_item_selected(const MenuItem *item);
 static MenuItems* app_item_selected(const MenuItem *item)
 {
     appmanager_app_start(item->text);
+    return NULL;
+}
+
+static MenuItems* test_item_selected(const MenuItem *item)
+{
+    appmanager_app_start("Settings");
+    return NULL;
+}
+
+static MenuItems* notification_item_selected(const MenuItem *item)
+{
+    appmanager_app_start("Notification");
     return NULL;
 }
 
@@ -57,6 +72,12 @@ static MenuItems* watch_list_item_selected(const MenuItem *item) {
     return items;
 }
 
+static void exit_to_watchface(struct Menu *menu, void *context)
+{
+    // Exit to watchface
+    appmanager_app_start("Simple");
+}
+
 static void systemapp_window_load(Window *window)
 {
     printf("WF load\n");
@@ -65,7 +86,7 @@ static void systemapp_window_load(Window *window)
 
     s_menu = menu_create(bounds);
     menu_set_callbacks(s_menu, s_menu, (MenuCallbacks) {
-        .on_menu_exit = NULL // TODO: exit to watchface
+        .on_menu_exit = exit_to_watchface
     });
     layer_add_child(window_layer, menu_get_layer(s_menu));
 
@@ -73,11 +94,17 @@ static void systemapp_window_load(Window *window)
 
     MenuItems *items = menu_items_create(4);
     menu_items_add(items, MenuItem("Watchfaces", "All your faces", 25, watch_list_item_selected));
-    menu_items_add(items, MenuItem("Settings", "Move Along", 24, flash_dump_item_selected));
+    menu_items_add(items, MenuItem("Settings", "Move Along", 24, test_item_selected));
     menu_items_add(items, MenuItem("RebbleOS", "... v0.0.0.1", 24, NULL));
-    menu_items_add(items, MenuItem("... Soon (TM)", NULL, 25, NULL));
+    menu_items_add(items, MenuItem("... Soon (TM)", NULL, 25, notification_item_selected));
     menu_set_items(s_menu, items);
 
+    // Status Bar
+    status_bar = status_bar_layer_create();
+    layer_add_child(menu_get_layer(s_menu), status_bar_layer_get_layer(status_bar));
+    
+    // TODO: Offset the menu:
+    
     //tick_timer_service_subscribe(MINUTE_UNIT, prv_tick_handler);
 }
 

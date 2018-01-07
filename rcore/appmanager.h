@@ -10,11 +10,19 @@
 
 #include "rebble_time.h"
 #include "fs.h"
+#include "FreeRTOS.h"
 #include <stdbool.h>
 
 // TODO     Make this dynamic. hacky 
 #define NUM_APPS 3
 #define MAX_APP_STR_LEN 32
+
+typedef struct AppTimer
+{
+    TickType_t when; /* ticks when this should fire, in ticks since boot */
+    void (*callback)(struct AppTimer *); /* always called back on the app thread */
+    struct AppTimer *next;
+} AppTimer;
 
 typedef struct AppMessage
 {
@@ -28,13 +36,6 @@ typedef struct ButtonMessage
     void *clickref;
     void *context;
 } ButtonMessage;
-
-typedef struct TickMessage
-{
-    void *callback;
-    struct tm* tick_time;
-    TimeUnits tick_units;
-} TickMessage;
 
 typedef void (*AppMainHandler)(void);
 
@@ -93,6 +94,7 @@ typedef struct App {
     char *name;
     ApplicationHeader *header;
     AppMainHandler main; // A shortcut to main
+    struct AppTimer *timer_head;
     struct App *next;
 } App;
 
@@ -115,8 +117,9 @@ typedef struct AppTypeHeader {
 
 
 void appmanager_init(void);
+void appmanager_timer_add(AppTimer *timer);
+void appmanager_timer_remove(AppTimer *timer);
 void appmanager_post_button_message(ButtonMessage *bmessage);
-void appmanager_post_tick_message(TickMessage *tmessage, BaseType_t *pxHigherPri);
 void appmanager_post_draw_message(void);
 void appmanager_app_start(char *name);
 void appmanager_app_quit(void);
