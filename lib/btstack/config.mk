@@ -83,7 +83,7 @@ SRCS_bt += lib/btstack/btstack/src/ble/att_dispatch.c
 SRCS_bt += lib/btstack/btstack/src/ble/att_server.c
 SRCS_bt += lib/btstack/btstack/src/ble/gatt_client.c
 SRCS_bt += lib/btstack/btstack/src/ble/le_device_db_memory.c
-SRCS_bt += lib/btstack/btstack/src/ble/le_device_db_tlv.c
+# SRCS_bt += lib/btstack/btstack/src/ble/le_device_db_tlv.c
 SRCS_bt += lib/btstack/btstack/src/ble/sm.c
 
 

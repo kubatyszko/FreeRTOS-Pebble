@@ -16,7 +16,7 @@
 #include "rebbleos.h"
 
 static TaskHandle_t _bt_task;
-static StackType_t _bt_task_stack[5000];
+static StackType_t _bt_task_stack[6000];
 static StaticTask_t _bt_task_buf;
 
 static void _bt_thread(void *pvParameters);
@@ -25,7 +25,7 @@ static void _bt_thread(void *pvParameters);
 void bluetooth_init(void)
 {
     
-    _bt_task = xTaskCreateStatic(_bt_thread, "BT", 5000, NULL, tskIDLE_PRIORITY + 1UL, _bt_task_stack, &_bt_task_buf);
+    _bt_task = xTaskCreateStatic(_bt_thread, "BT", 6000, NULL, tskIDLE_PRIORITY + 1UL, _bt_task_stack, &_bt_task_buf);
 }
 
 void bluetooth_send_serial()

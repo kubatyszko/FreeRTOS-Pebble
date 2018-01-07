@@ -80,21 +80,18 @@ void bt_device_init(void)
     btstack_run_loop_init(btstack_run_loop_freertos_get_instance());
     // enable packet logging, at least while porting
     hci_dump_open( NULL, HCI_DUMP_STDOUT );
+
     // init HCI
     hci_init(hci_transport_h4_instance(btstack_uart_block_freertos_instance()), (void*) &config);
     hci_set_chipset(btstack_chipset_cc256x_instance()); // Do I need this ??
     
     hci_event_callback_registration.callback = &packet_handler;
     hci_add_event_handler(&hci_event_callback_registration);
-//     hci_event_callback_registration.callback = &packet_handler;
-//     hci_add_event_handler(&hci_event_callback_registration);
-
     
     // init L2CAP
     l2cap_init();
     
-    // init RFCOMM
-   
+    // init RFCOMM  
     rfcomm_init();
     rfcomm_register_service(packet_handler, RFCOMM_SERVER_CHANNEL, 0xffff);
 
@@ -106,21 +103,28 @@ void bt_device_init(void)
     SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "SDP service record size: %u", de_get_len(spp_service_buffer));
 
     gap_set_local_name("SPP and LE Counter 00:00:00:00:00:00");
+    SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "A");
     gap_ssp_set_io_capability(SSP_IO_CAPABILITY_DISPLAY_YES_NO);
+    SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "B");
     gap_discoverable_control(1);
+    SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "C");
 
     // setup le device db
     le_device_db_init();
+    SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "D");
 
     // setup SM: Display only
     sm_init();
+    SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "E");
 
     // setup ATT server
     att_server_init(profile_data, att_read_callback, att_write_callback);    
-att_server_register_packet_handler(packet_handler);
+    SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "F");
+    att_server_register_packet_handler(packet_handler);
+    SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "G");
 
 
-// set one-shot timer
+    // set one-shot timer
     heartbeat.process = &heartbeat_handler;
     btstack_run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
     btstack_run_loop_add_timer(&heartbeat);
@@ -136,9 +140,9 @@ att_server_register_packet_handler(packet_handler);
     gap_advertisements_enable(1);
 
     // beat once
-beat();
+    beat();
     // hand over to BTstack example code (we hope)
-//     btstack_main(0, NULL);
+    //     btstack_main(0, NULL);
     // go
     
     hci_power_control(HCI_POWER_ON);
