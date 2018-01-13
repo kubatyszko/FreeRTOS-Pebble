@@ -14,6 +14,7 @@
 #include <stm32f4xx_tim.h>
 #include "stm32_power.h"
 #include "btstack_rebble.h"
+#include "snowy_bluetooth.h"
 
 // Init USART1
 // DMA
@@ -23,13 +24,15 @@
 // clocks
 // 
 
-uint8_t hw_bluetooth_power_cycle(void);
-
 #define BT_SHUTD        GPIO_Pin_12
 volatile int tx_done, rx_done = 0;
 
-const uint8_t hci_reset_bytes[] = { 0x01, 0x03, 0x0c, 0x00 };
+void _bt_reset_hci_dma(void);
+void _bluetooth_dma_init(void);
+void _usart1_init(uint32_t baud);
 
+/*
+const uint8_t hci_reset_bytes[] = { 0x01, 0x03, 0x0c, 0x00 };
 char gbuf[10];
 
 void _bt_reset_hci_dma(void)
@@ -70,6 +73,7 @@ void _bt_reset_hci_dma(void)
     }
     printf("\n");
 }
+*/
 
 uint8_t hw_bluetooth_init(void)
 {
@@ -116,14 +120,15 @@ uint8_t hw_bluetooth_init(void)
     // Well, lets go for broke. Dunno what this does
     GPIO_SetBits(GPIOA, GPIO_Pin_4);
     
-    if (hw_bluetooth_power_cycle())
-    {
-        DRV_LOG("BT", APP_LOG_LEVEL_ERROR, "Bluetooth Failed!");
-        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);     
-        stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
-        return 1;
-    }
+    hw_bluetooth_clock_on();
+//     if (hw_bluetooth_power_cycle())
+//     {
+//         DRV_LOG("BT", APP_LOG_LEVEL_ERROR, "Bluetooth Failed!");
+//         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+//         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);     
+//         stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
+//         return 1;
+//     }
     
     // initialise BTStack.... Go!
     bt_device_init();
@@ -137,6 +142,45 @@ uint8_t hw_bluetooth_init(void)
     return 0;
 }
 
+// Enable the external 32.768khz clock for the bluetooth.
+// The clock is connected to the Low speed External LSE input
+// It's used to drive RTC and also the bluetooth module.
+// We are going to pass the clock out through MCO1 pin
+void hw_bluetooth_clock_on(void)
+{
+    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Powering up exterinal clock...");
+    stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
+    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
+    stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_PWR);
+   
+    // Well, lets go for broke. Dunno what this does
+    GPIO_SetBits(GPIOA, GPIO_Pin_4);
+    
+    // allow RTC access so we can play with LSE
+    PWR_BackupAccessCmd(ENABLE); 
+    
+    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT set MCO1 32khz");
+    // Turn on the MCO1 clock and pump 32khz to bluetooth
+    RCC_LSEConfig(RCC_LSE_ON);
+
+    // knock knock
+    while (RCC_GetFlagStatus(RCC_FLAG_LSERDY) == RESET);
+    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "LSE Ready");
+    
+    // Enable power to the MCO Osc out pin
+    RCC_MCO1Config(RCC_MCO1Source_LSE, RCC_MCO1Div_1);
+        
+    // datasheet says no more than 2ms for clock stabilisation. Lets go for more
+    do_delay_ms(5);
+    IWDG_ReloadCounter();
+    
+    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Power ON!");
+//     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_USART1);
+//     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+//     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
+//      stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_PWR);
+}
 
 // reset Bluetooth using nShutdown
 uint8_t hw_bluetooth_power_cycle(void)
@@ -193,7 +237,7 @@ uint8_t hw_bluetooth_power_cycle(void)
             stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_USART1);
             stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
             stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
-            stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_PWR);
+//             stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_PWR);
             return 0;
         }
         do_delay_ms(1);
@@ -203,7 +247,7 @@ uint8_t hw_bluetooth_power_cycle(void)
     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_USART1);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
-    stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_PWR);
+//     stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_PWR);
     DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Failed? TERMINAL!");
     return 1;
 }
@@ -341,6 +385,7 @@ void DMA2_Stream2_IRQHandler(void)
         
         stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_USART1);
         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
         stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_UART8);
@@ -364,6 +409,7 @@ void DMA2_Stream7_IRQHandler(void)
 
         stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_USART1);
         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
         stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_UART8);
@@ -395,6 +441,7 @@ void hw_bluetooth_enable_cts_irq()
 {
     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     
     NVIC_InitTypeDef nvic_init_struct;
     EXTI_InitTypeDef exti_init_struct;
@@ -416,12 +463,14 @@ void hw_bluetooth_enable_cts_irq()
     
     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+    stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
 }
 
-void hw_bluetooth_disable_cts_irq()
+void hw_bluetooth_disable_cts_irq(void)
 {
     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     
     EXTI_InitTypeDef exti_init_struct;
     NVIC_InitTypeDef nvic_init_struct;
@@ -442,13 +491,16 @@ void hw_bluetooth_disable_cts_irq()
     
     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+    stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
 }
 
 void hw_bluetooth_send_dma(uint32_t *data, uint32_t len)
 {
+//     SYS_LOG("BT", APP_LOG_LEVEL_INFO, "DMA Tx");
     // XXX released in IRQ
     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
     stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_UART8);
@@ -491,10 +543,12 @@ void hw_bluetooth_send_dma(uint32_t *data, uint32_t len)
 
 void hw_bluetooth_recv_dma(uint32_t *data, size_t len)
 {
+//     SYS_LOG("BT", APP_LOG_LEVEL_INFO, "DMA Rx");
     DMA_InitTypeDef dma_init_struct;
 
     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
     stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_UART8);
@@ -530,7 +584,7 @@ ssize_t _bt_write(const void *buf, size_t len)
     for (i = 0; i < len; i++)
     {
       while (!(USART1->SR & USART_FLAG_TXE));
-//       USART1->DR =  ((uint8_t *) buf)[i];
+//       USART1->DR =  ((uint8_t *) buf)[i]; 
       USART_SendData(USART1, ((uint8_t *) buf)[i]);
     }
     

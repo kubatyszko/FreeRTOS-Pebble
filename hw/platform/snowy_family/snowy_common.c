@@ -21,6 +21,7 @@
 // ENABLE this if you want smartstrap debugging output. For now if you do this qemu might not work
 #define DEBUG_UART_SMARTSTRAP
 #define DEBUG_UART_DBG3
+// #define DEBUG_UART_BT // bit crashy (recursive if you have bt logging on)
 
 void init_USART3(void);
 void init_USART8(void);
@@ -45,6 +46,9 @@ void debug_init()
 #ifdef DEBUG_UART_SMARTSTRAP
     DRV_LOG("debug", APP_LOG_LEVEL_INFO, "Usart 8 Init");
 #endif
+#ifdef DEBUG_UART_BT
+    DRV_LOG("debug", APP_LOG_LEVEL_INFO, "BT Uart Init");
+#endif
 }
 
 /* note that locking needs to be handled by external entity here */
@@ -66,6 +70,9 @@ void debug_write(const unsigned char *p, size_t len)
     
     stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_USART3);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOC);
+#endif
+#ifdef DEBUG_UART_BT
+    bluetooth_send_serial_raw(p, len);
 #endif
 }
 

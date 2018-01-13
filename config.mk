@@ -12,6 +12,7 @@ CFLAGS_all += -Ilib/neographics/src/fonts
 CFLAGS_all += -Ilib/neographics/src/text
 CFLAGS_all += -Ilib/minilib/inc
 CFLAGS_all += -Ilib/png
+CFLAGS_all += -Ilib/ringbuf
 CFLAGS_all += -IWatchfaces
 CFLAGS_all += -IApps
 CFLAGS_all += -IApps/System
@@ -55,6 +56,8 @@ SRCS_all += lib/musl/time/__secs_to_tm.c
 SRCS_all += lib/musl/time/__tm_to_secs.c
 SRCS_all += lib/musl/time/__year_to_secs.c
 SRCS_all += lib/musl/time/__month_to_secs.c
+
+SRCS_all += lib/ringbuf/ringbuf.c
 
 SRCS_all += lib/neographics/src/common.c
 SRCS_all += lib/neographics/src/context.c

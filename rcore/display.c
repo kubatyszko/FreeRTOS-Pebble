@@ -31,7 +31,7 @@ void display_init(void)
     
     _display_cmd(DISPLAY_CMD_DRAW, NULL);
     
-    KERN_LOG("Display", APP_LOG_LEVEL_INFO, "Display Tasks Created");
+    SYS_LOG("Display", APP_LOG_LEVEL_INFO, "Display Tasks Created");
 }
 
 /*
