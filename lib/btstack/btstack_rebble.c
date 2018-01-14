@@ -56,9 +56,10 @@ const uint8_t adv_data[] = {
     // Flags general discoverable, BR/EDR not supported
     0x02, BLUETOOTH_DATA_TYPE_FLAGS, 0x06, 
     // Name
-    0x0b, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME, 'R', 'e', 'b', 'b', 'l', 'e', 'O', 'S', 'L', 'E', 
+//    0x0b, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME, 'R', 'e', 'b', 'b', 'l', 'e', 'O', 'S', 'L', 'E', 
+    0x0d, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME, 'P', 'e', 'b', 'b', 'l', 'e', ' ', 'T', 'i', 'm', 'e', 'L', 
     // Incomplete List of 16-bit Service Class UUIDs -- FF10 - only valid for testing!
-    0x03, BLUETOOTH_DATA_TYPE_INCOMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS, 0x10, 0xff,
+    0x03, BLUETOOTH_DATA_TYPE_INCOMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS, 0x54, 0x01 // 0x10, 0xff,
 };
 /* LISTING_END */
 
@@ -97,7 +98,7 @@ void bt_device_init(void)
     SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "SDP service record size: %u", de_get_len(spp_service_buffer));
     sdp_init();
 
-    gap_set_local_name("RebbleOS");
+    gap_set_local_name("Pebble Time");
     gap_ssp_set_io_capability(SSP_IO_CAPABILITY_DISPLAY_YES_NO);
     gap_discoverable_control(1);
 

@@ -304,6 +304,14 @@ void appmanager_post_draw_message(void)
     xQueueSendToBack(_app_message_queue, &am, (TickType_t)10);
 }
 
+void appmanager_post_notification(void)
+{
+    AppMessage am = (AppMessage) {
+        .message_type_id = APP_NOTIFY
+    };
+    xQueueSendToBack(_app_message_queue, &am, (TickType_t)10);
+}
+
 /* Always adds to the running app's queue.  Note that this is only
  * reasonable to do from the app thread: otherwise, you can race with the
  * check for the timer head.  */
@@ -392,7 +400,7 @@ void app_event_loop(void)
         if (xQueueReceive(_app_message_queue, &data, next_timer))
         {
             /* We woke up for some kind of event that someone posted.  But what? */
-            KERN_LOG("app", APP_LOG_LEVEL_INFO, "Queue Receive");
+            SYS_LOG("app", APP_LOG_LEVEL_INFO, "Queue Receive");
             if (data.message_type_id == APP_BUTTON)
             {
                 // execute the button's callback
@@ -406,7 +414,7 @@ void app_event_loop(void)
                 // remove the ticktimer service handler and stop it
                 tick_timer_service_unsubscribe();
 
-                KERN_LOG("app", APP_LOG_LEVEL_INFO, "App Quit");
+                SYS_LOG("app", APP_LOG_LEVEL_INFO, "App Quit");
                 // The task will die hard.
                 // TODO: BAD! The task will never call the cleanup after loop!
                 vTaskDelete(_app_task_handle);
@@ -417,6 +425,14 @@ void app_event_loop(void)
             {
                 window_draw();
             }
+            else if (data.message_type_id == APP_NOTIFY)
+            {
+                // draw our notification highjack stylee
+                SYS_LOG("app", APP_LOG_LEVEL_INFO, "Notification");
+                // cheesy
+                appmanager_app_start("Notification");
+//                 window_draw();
+            }
         } else {
             /* We woke up because we hit a timer expiry.  Dequeue first,
              * then invoke -- otherwise someone else could insert themselves
@@ -424,7 +440,7 @@ void app_event_loop(void)
             AppTimer *timer = _running_app->timer_head;
             assert(timer);
             
-            KERN_LOG("app", APP_LOG_LEVEL_INFO, "woke up for a timer");
+            SYS_LOG("app", APP_LOG_LEVEL_INFO, "woke up for a timer");
 
             _running_app->timer_head = timer->next;
             
@@ -433,6 +449,8 @@ void app_event_loop(void)
     }
     // the app itself will quit now
 }
+
+App *_last_app_ran;
 
 /*
  * A task to run an application.
@@ -481,6 +499,7 @@ static void _appmanager_app_thread(void *parms)
             continue;
 
         // it's the one
+//         _last_ran_app = _running_app;
         _running_app = app;
         
         if (_app_task_handle != NULL) {

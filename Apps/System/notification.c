@@ -18,10 +18,11 @@ static NotificationWindow *notif_window;
 
 void notif_init(void)
 {
-    printf("init\n");
+//     printf("init\n");
     char *app = "RebbleOS";
     char *title = "Test Alert";
-    char *body = "Testing a basic notification on RebbleOS. Create it using notification_window_create, with an app_name, title, body, and optional icon.";
+    //char *body = "Testing a basic notification on RebbleOS. Create it using notification_window_create, with an app_name, title, body, and optional icon.";
+    char *body = notification_get();
     
     NotificationWindow *notification_window = notification_window_create(app, title, body, gbitmap_create_with_resource(23));
     
