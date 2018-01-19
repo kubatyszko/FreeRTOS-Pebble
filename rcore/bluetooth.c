@@ -4,9 +4,38 @@
  *
  * Author: Barry Carter <barry.carter@gmail.com>
  */
+/*
+ * General flow:
+ * RX
+ * 
+ * 
+ * TX
+ * A packet is genreated and posted to the cmd thread
+ * btstack_rebble takes a ref to this data,
+ * and waits for a ready to send message fromt he bt stack.
+ *  * NOTE the memory is not copied, it is sent with supplied buf
+ * 
+ * RX
+ * An incoming packet is colelcted in btstack_rebble
+ * The data is copied into our rx ring buffer (in here)
+ * once we have some data, we look over the buffer and check for packets
+ * If we have packets, we recombine them and process as required.
+ * 
+ * We use the ringbug as I have seen packets span multiple tranactions
+ * TODO: See if we can determine the real MTU and if this goes away. 
+ *  could drop ringbuf
+ * 
+ * NOTES:
+ * we have locking and whatnot. Test it.
+ * clocks are a bit rough. check.
+ * memory. stack sizes are large. reduce.
+ * determine max MTU size (eats ram)
+ * tune rx buffer size
+ */
 
 #include "FreeRTOS.h"
 #include "task.h" /* xTaskCreate */
+#include "timers.h" /* xTimerCreate */
 #include "queue.h" /* xQueueCreate */
 #include "platform.h" /* hw_backlight_set */
 #include "log.h" /* KERN_LOG */
@@ -16,15 +45,16 @@
 #include "rebbleos.h"
 #include "rbl_bluetooth.h"
 #include "ringbuf.h"
+#include "endpoint.h"
 
 // BT runloop
 static TaskHandle_t _bt_task;
-static StackType_t _bt_task_stack[4000];
+static StackType_t _bt_task_stack[2000];
 static StaticTask_t _bt_task_buf;
 
 // for the command processer
 static TaskHandle_t _bt_cmd_task;
-static StackType_t _bt_cmd_task_stack[configMINIMAL_STACK_SIZE];
+static StackType_t _bt_cmd_task_stack[1300];
 static StaticTask_t _bt_cmd_task_buf;
 
 static xQueueHandle _bt_cmd_queue;
@@ -35,29 +65,16 @@ static void _bt_thread(void *pvParameters);
 static void _bt_cmd_thread(void *pvParameters);
 
 
-
-// XXX move me
-
-#define MAGIC_PACKET_HEADER 0xfeed
-#define MAGIC_PACKET_FOOTER 0xbeef
-
-#define PACKET_STATE_IDLE 0
-#define PACKET_STATE_RX   1
-#define PACKET_STATE_EXPLODED_WITH_FIRE 2
-
-static uint8_t packet_state = PACKET_STATE_IDLE;
+#define BUFFER_CLEAR_TIMER_MS 5
+TimerHandle_t _timer_buffer_refresh;
+StaticTimer_t _timer_buffer_refresh_buf;
+void _timer_callback(TimerHandle_t timer);
 
 typedef struct pbl_transport_packet_t {
-    uint16_t header;
-    uint16_t protocol;
     uint16_t length;
+    uint16_t endpoint;
     uint8_t *data;
-    uint16_t footer;
 } __attribute__((__packed__)) pbl_transport_packet;
-
-uint8_t start_marker = 0;
-
-
 
 #define PACKET_TYPE_RX 0
 #define PACKET_TYPE_TX 1
@@ -72,31 +89,23 @@ typedef struct bt_packet_tx_t {
 bt_packet_tx packet;
 
 
-// ring buffer (statically allocated)
-// ringbuf_t rx_buf
-#define TX_RING_BUF_SIZE 128
 #define RX_RING_BUF_SIZE 128
-// statically allocate the ring buffer
-// uint8_t tx_ring_buf_buffer[TX_RING_BUF_SIZE];
-ringbuf_t tx_ring_buf;
 ringbuf_t rx_ring_buf;
 
-void _parse_packet();
+pbl_transport_packet *_parse_packet(void);
 
 void bluetooth_init(void)
 {
-    _bt_task = xTaskCreateStatic(_bt_thread, "BT", 4000, NULL, tskIDLE_PRIORITY + 3UL, _bt_task_stack, &_bt_task_buf);
-    _bt_cmd_task = xTaskCreateStatic(_bt_cmd_thread, "BTCmd", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 4UL, _bt_cmd_task_stack, &_bt_cmd_task_buf);
-
+    _bt_task = xTaskCreateStatic(_bt_thread, "BT", 2000, NULL, tskIDLE_PRIORITY + 3UL, _bt_task_stack, &_bt_task_buf);
+    _bt_cmd_task = xTaskCreateStatic(_bt_cmd_thread, "BTCmd", 1300, NULL, tskIDLE_PRIORITY + 4UL, _bt_cmd_task_stack, &_bt_cmd_task_buf);
+    _timer_buffer_refresh = xTimerCreateStatic("T", pdMS_TO_TICKS(BUFFER_CLEAR_TIMER_MS), pdFALSE, ( void * ) 0, _timer_callback, &_timer_buffer_refresh_buf);
     
     _bt_tx_mutex = xSemaphoreCreateMutexStatic(&_bt_tx_mutex_buf);
     _bt_cmd_queue = xQueueCreate(1, sizeof(pbl_transport_packet *));
     
-    // statically allocate the tx buffer
-//     tx_ring_buf.buf = tx_ring_buf_buffer;
-//     tx_ring_buf.size = TX_RING_BUF_SIZE + 1; // one byte for full confition (see ringbuf.c)
-    tx_ring_buf = ringbuf_new(TX_RING_BUF_SIZE);
     rx_ring_buf = ringbuf_new(RX_RING_BUF_SIZE);
+    ringbuf_reset(rx_ring_buf);
+
     
     SYS_LOG("BT", APP_LOG_LEVEL_INFO, "Bluetooth Tasks Created");
 }
@@ -104,102 +113,51 @@ void bluetooth_init(void)
 /*
  * Just send some raw data
  * returns bytes sent
+ * DO NOT CALL FROM ISR
  */
 uint32_t bluetooth_send_serial_raw(uint8_t *data, size_t len)
 {
     if (!rebbleos_module_is_enabled(MODULE_BLUETOOTH)) return 0;
 //     SYS_LOG("BT", APP_LOG_LEVEL_INFO, "Sending Data");
-    // can't guarantee these test logs dont come from an ISR
-//     xSemaphoreTake(_bt_tx_mutex, portMAX_DELAY);
-    // fill up the buffer
-    // XXX TODO block when full? At least check!
-    ringbuf_memcpy_into(tx_ring_buf, data, len);
-    btstack_request_tx();
+    xSemaphoreTake(_bt_tx_mutex, portMAX_DELAY);
+
+    bt_device_request_tx(data, len);
     
-//     xSemaphoreGive(_bt_tx_mutex);
+    // block this thread until we are done
+    if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(200)))
+    {
+        // clean unlock
+        SYS_LOG("BT", APP_LOG_LEVEL_DEBUG, "Sent %d bytes", len);
+    }
+    else
+    {
+        // timed out
+        SYS_LOG("BT", APP_LOG_LEVEL_ERROR, "Timed out sending!");
+    }
+    
+    xSemaphoreGive(_bt_tx_mutex);
     
     return len;
 }
 
-uint32_t bluetooth_tx_buf_get_bytes(uint8_t *data, size_t len)
-{
-    size_t count = ringbuf_bytes_used(tx_ring_buf);
-    if (len > count)
-        len = count;
-    ringbuf_memcpy_from(data, tx_ring_buf, count);
-    return count;
-}
-static char gotcha[] = "Gotcha";
+
 /*
  * Some data arrived from the stack
  */
 void bluetooth_data_rx(uint8_t *data, size_t len)
 {
-    // XXX TODO should probably lock here too
-    // read the data out into our ring buffer
+    // btstack is atomic
+    xTimerStop(_timer_buffer_refresh, 0);
+    
     ringbuf_memcpy_into(rx_ring_buf, data, len);
-    SYS_LOG("BT", APP_LOG_LEVEL_ERROR, "RX: B 0x%x", (uint8_t)*(data));
-    
-    bluetooth_send_serial_raw(gotcha, sizeof(gotcha));
-
-    // check for a a packet
-    _parse_packet();
-    // and stuff
+    SYS_LOG("BT", APP_LOG_LEVEL_ERROR, "RX: B 0x%x", *(data));
+        
+    // Notify the bluetooth threads
+    bluetooth_data_rx_notify(len);
 }
 
-
-
-int8_t _contains_packet_header(uint8_t *data, size_t len)
-{
-    for(size_t i = 0; i < len - 4; i++)
-    {
-        if (*(((uint16_t *)data + i)) == MAGIC_PACKET_HEADER)
-        {
-            uint16_t pkt_len = *(data + i + 4);
-            
-            // additionally check the packet size is sane
-            // erm, 1k is way too masive
-            // XXX TODO
-            if (pkt_len > 1024)
-            {
-                SYS_LOG("BT", APP_LOG_LEVEL_ERROR, "RX: NOT a packet. Too big! > 1024");
-                return -1;
-            }
-            return i;
-        }
-    }
-    return -2;
-}
-
-int8_t _contains_packet_footer(uint8_t *data, size_t len)
-{
-    for(size_t i = 0; i < len - 2; i++)
-    {
-        if ((uint16_t)*(data + i) == MAGIC_PACKET_FOOTER)
-        {
-            // looks footery
-            return i;
-        }
-    }
-    
-    return -1;
-}
-
-void _packet_remove_from_buffer(uint8_t *data, size_t len)
-{
-    // is there another packet lurking?
-    size_t another_header_start = _contains_packet_header(data, len);
-    if (another_header_start > 0)
-    {
-        // reset up to the new header
-        ringbuf_memset(rx_ring_buf, 0, another_header_start);
-    }
-    else
-    {
-        // nuke it from orbit
-        ringbuf_reset(rx_ring_buf);
-    }
-}
+#define SWAP_UINT16(x) (((x) >> 8) | ((x) << 8))
+#define SWAP_UINT32(x) (((x) >> 24) | (((x) & 0x00FF0000) >> 8) | (((x) & 0x0000FF00) << 8) | ((x) << 24))
 
 /*
  * We are a simple packet parser. We are stupid
@@ -211,77 +169,67 @@ void _packet_remove_from_buffer(uint8_t *data, size_t len)
  * this packet. In theory it shouldn't matter. It should have been
  * processed, or it's junk
  * 
- * There is also a recursion here.
- *   When we find a packet, we check for more
- *   When we discard a back packet, we check for more
  */
-void _parse_packet(void)
+pbl_transport_packet *_parse_packet(void)
 {
     uint8_t *buf_start = ringbuf_tail(rx_ring_buf);
     size_t qlen = ringbuf_bytes_used(rx_ring_buf);
+   
+    pbl_transport_packet *pkt = buf_start;
+    pkt->length = SWAP_UINT16(pkt->length);
+    pkt->endpoint = SWAP_UINT16(pkt->endpoint);
+    SYS_LOG("XXXXX", APP_LOG_LEVEL_INFO, "PKT L:0x%x E:0x%x", pkt->length, pkt->endpoint);
     
-    // look for a header
-    int8_t header_start = _contains_packet_header(buf_start, qlen);
-    
-    if (header_start < 0)
-    {
-        SYS_LOG("BT", APP_LOG_LEVEL_ERROR, "RX: No header here");
-        return;
+    for (int i = 0; i < qlen; i++) {
+        SYS_LOG("XXXXX", APP_LOG_LEVEL_INFO, "0x%x", buf_start[i]);
     }
     
-    // got a header. check buffer is big enough to at contain the footer in principle
-    // this will do for the header and the length
-    uint16_t pkt_len = *(buf_start + header_start + 4);
-    // footer will be streamed after data...
+    if (qlen + 4 < pkt->length)
+    {
+        SYS_LOG("BT", APP_LOG_LEVEL_DEBUG, "RX: Data still coming %d %d", pkt->length, qlen);
+        if(xTimerStart(_timer_buffer_refresh, 0) != pdPASS )
+        {
+            SYS_LOG("BT", APP_LOG_LEVEL_ERROR, "RX: Buffer Reset time won't start");
+        }
+        return NULL;
+    }
 
-    if (6 + pkt_len > qlen)
+    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "RX: GOOD packet. len %d end %d", pkt->length, pkt->endpoint);
+    
+    uint8_t *tmpdata = NULL;
+    
+    // random number
+    if (pkt->length > 2048)
     {
-        SYS_LOG("BT", APP_LOG_LEVEL_ERROR, "RX: Footer still coming %d %d", pkt_len, qlen);
-        return;
-    }
-
-    uint16_t footer = *((uint16_t *)(buf_start + header_start + 6 + pkt_len));
-    // we have the footer for sure now. Check validity
-    if (footer != MAGIC_PACKET_FOOTER)
-    {
-        SYS_LOG("BT", APP_LOG_LEVEL_ERROR, "RX: No Footer? %d %d", pkt_len, qlen);
-        // discard this!
-        _packet_remove_from_buffer(buf_start, qlen);
-        return;
+        SYS_LOG("BT", APP_LOG_LEVEL_ERROR, "RX: payload length %d. Seems suspect!", pkt->length);
     }
     
-    uint8_t *pktdata = buf_start + header_start + 6;
+    if (pkt->length > 0)
+    {
+        // copy into a new packet
+        tmpdata = malloc(pkt->length);
+        memcpy(tmpdata, buf_start + 4, pkt->length);
+    }
+    else
+    {
+        SYS_LOG("BT", APP_LOG_LEVEL_WARNING, "RX: payload length 0. Seems suspect!");
+    }
 
     // copy into a new packet
-    uint8_t *tmpdata = malloc(pkt_len);
-    memcpy(tmpdata, pktdata, pkt_len);
-    
-    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "RX: GOOD packet. len %d", pkt_len);
-    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "RX: %s", tmpdata);
-    // Stuff goes here:
-    // routing the packet and stuff.
-    
-    uint16_t endpoint = *(buf_start + header_start + 2);
-    
-    // Notify the bluetooth threads
-    bluetooth_data_rx_notify((uint8_t *)tmpdata, pkt_len, endpoint);
-        
-    // we still need to clear the buffer
-    _packet_remove_from_buffer(buf_start, qlen);
-    
-    // do we need to process more?
-    const uint8_t *tbuf_start = ringbuf_head(rx_ring_buf);
-    
-    // look for a header
-    header_start = _contains_packet_header(buf_start, qlen);
-    
-    if (header_start > 0)
-        return _parse_packet();
+    pbl_transport_packet *newpkt = malloc(sizeof(pbl_transport_packet));
+
+    // destructively dequeue the whole packet
+    ringbuf_memcpy_from((void *)newpkt, rx_ring_buf, pkt->length + 4);
+    newpkt->data = tmpdata;
     
     SYS_LOG("BT", APP_LOG_LEVEL_INFO, "RX: Done");
+       
+    return newpkt;
 }
 
-
+/* 
+ * Request a TX through the outboud thread mechanism
+ */
 void bluetooth_send(uint8_t *data, size_t len)
 {
     packet.pkt_type = PACKET_TYPE_TX;
@@ -290,12 +238,31 @@ void bluetooth_send(uint8_t *data, size_t len)
     xQueueSendToBack(_bt_cmd_queue, &packet, 0);
 }
 
-void bluetooth_data_rx_notify(uint8_t *data, size_t len, uint16_t endpoint)
+/*
+ * Send a Pebble packet right now
+ */
+void bluetooth_send_packet(uint16_t endpoint, uint8_t *data, uint16_t len)
+{
+    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "BT Got a Packet L:%d, E:%d", len, endpoint);
+
+    uint8_t packet[len + 4];
+    uint8_t *pxpacket = packet;
+    *((uint16_t *)pxpacket) = SWAP_UINT16(len);
+    *((uint16_t *)(pxpacket + 2)) = SWAP_UINT16(endpoint);
+    memcpy(pxpacket + 4, data, len);
+    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "BT Send packet L:%d, E:%d pD:%d", *((uint16_t *)pxpacket), *((uint16_t *)(pxpacket + 2)), data);
+    // this will block until complete
+    bluetooth_send_serial_raw(pxpacket, len + 4);
+    
+}
+
+/* 
+ * Some data arrived from the bluetooth device. We just want to queue the processing
+ */
+void bluetooth_data_rx_notify(size_t len)
 {
     // XXX TODO LOCK ME REALLY URGENTLY Yo.
     packet.pkt_type = PACKET_TYPE_RX;
-    packet.endpoint = endpoint;
-    packet.data = data;
     packet.len = len;
     SYS_LOG("BT", APP_LOG_LEVEL_INFO, "RX: Q PACKET");
     void *px_packet = &packet;
@@ -303,9 +270,26 @@ void bluetooth_data_rx_notify(uint8_t *data, size_t len, uint16_t endpoint)
 }
 
 /*
+ * We sent a packet. it was sent.
+ */
+void bluetooth_tx_complete_from_isr(void)
+{
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    // Notify the task that the transmission is complete.
+    vTaskNotifyGiveFromISR(_bt_cmd_task, &xHigherPriorityTaskWoken);
+
+    /* If xHigherPriorityTaskWoken is now set to pdTRUE then a context switch
+    should be performed to ensure the interrupt returns directly to the highest
+    priority task.  The macro used for this purpose is dependent on the port in
+    use and may be called portEND_SWITCHING_ISR(). */
+    portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+}
+
+/*
  * Bluetooth thread. The device is initialised here
  * 
- * XXX move freertos runloop code to here
+ * XXX move freertos runloop code to here?
  */
 static void _bt_thread(void *pvParameters)
 {  
@@ -331,26 +315,31 @@ uint8_t *notification_get(void)
     return notification;
 }
 
+static const uint8_t FW_VERSION[] = "v3.4.5-2RebbleOS";
+
 // TODO
 static void _bt_cmd_thread(void *pvParameters)
 {
     bt_packet_tx *pkt = NULL;
     SYS_LOG("BT", APP_LOG_LEVEL_INFO, "BT CMD Thread started");
     
-    // a test
-    static char tpkt[18];
-    
-    *((uint16_t *)tpkt) = MAGIC_PACKET_HEADER;
-    *((uint16_t *)tpkt + 2) = 1; // endpoint
-    *((uint16_t *)(tpkt + 4)) = 10; // length
-    memcpy(tpkt + 6, "hello.....", 10); // data
-    *((uint16_t *)(tpkt + 6 + 10)) = MAGIC_PACKET_FOOTER;
+    uint8_t noty_data[] = {// test nofy data ripped from gb
+        0x0, 0x49, 0xb, 0xc2, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0xce, 0x92, 0x83, 0xc4, 0x0, 0x0, 0x0, 0x0, 0x1e, 0xc8, 0x60, 0x5a, 0x1, 0x3, 0x1, 0x1, 0x4, 0x0, 0x54, 0x65, 0x73, 0x74, 0x2, 0x4, 0x0, 0x54, 0x65, 0x73, 0x74, 0x3, 0x4, 0x0, 0x54, 0x65, 0x73, 0x74, 0x3, 0x4, 0x1, 0x1, 0xb, 0x0, 0x44, 0x69, 0x73, 0x6d, 0x69, 0x73, 0x73, 0x20, 0x61, 0x6c, 0x6c, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
         
-//     bluetooth_data_rx((uint8_t *)tpkt, 18);
+    bt_packet_tx tpkt = { 
+        PACKET_TYPE_RX,
+        3010, // endpoint
+        noty_data,
+        73        
+    };
+    void *px_packet = &tpkt;
+    ringbuf_memcpy_into(rx_ring_buf, noty_data, 77);
+    xQueueSendToBack(_bt_cmd_queue, (void *)&px_packet, 0);
+    
     
     for( ;; )
     {
-        // Sit and wait for a wakeup. We will wake when we have a packet to send
+        // Si and wait for a wakeup. We will wake when we have a packet to send/recv
         if (xQueueReceive(_bt_cmd_queue, &pkt, portMAX_DELAY))
         {
             if (pkt->pkt_type == PACKET_TYPE_TX)
@@ -360,26 +349,108 @@ static void _bt_cmd_thread(void *pvParameters)
             else if (pkt->pkt_type == PACKET_TYPE_RX)
             {
                 // some data arrived. We are responsible for the memory
-                SYS_LOG("BT", APP_LOG_LEVEL_INFO, "BT GOT PACKET %s", pkt->data);
+                SYS_LOG("BT", APP_LOG_LEVEL_INFO, "BT Got Data L:%d", pkt->len);
                 
-                switch(pkt->endpoint)
-                { 
-                    case 1:
-                        break;
-                    default:   
-                        // complain
-                        break;
+                // check for a a packet
+                pbl_transport_packet *bufpkt = _parse_packet();
+                
+                // Maybe the packet isn't ready. bail
+                if (!bufpkt)
+                {
+                    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "BT Skip processing packet");
+                    continue;
                 }
-                strncpy((char*)notification, (char*)pkt->data, 100);
-                notification_len = pkt->len;
-                appmanager_post_notification();
                 
-                free(pkt->data);                
+                SYS_LOG("BT", APP_LOG_LEVEL_INFO, "BT Got a Packet L:%d, E:%d", bufpkt->length, bufpkt->endpoint);
+                
+                // Endpoint Firmware Version
+                if(bufpkt->endpoint == ENDPOINT_FIRMWARE_VERSION)
+                {       
+                    switch(bufpkt->data[0])
+                    {
+                        case FIRMWARE_VERSION_GETVERSION:
+                            SYS_LOG("BT", APP_LOG_LEVEL_INFO, "Get Version");
+                            uint16_t tx_len = strlen(FW_VERSION);
+                            bluetooth_send_packet(bufpkt->endpoint, FW_VERSION, tx_len);
+                            break;
+                    }
+                }
+                // Endpoint Set Time
+                else if (bufpkt->endpoint == ENDPOINT_SET_TIME)
+                {
+                    cmd_set_time_t *time = (cmd_set_time_t *)bufpkt->data;
+                    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "XXX Time Set cmd %d, ts %d tso %d, tz %d", time->cmd, time->ts, time->tso, time->tz);
+                }
+                else if (bufpkt->endpoint == ENDPOINT_PHONE_MSG)
+                {
+                    // XXX get rid of the packet to the message thread
+                    
+                    // head the header details
+                    cmd_phone_notify_t *msg = (cmd_phone_notify_t *)bufpkt->data;
+                    
+                    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "X attrc %d actc %d", msg->attr_count, msg->action_count);
+                    
+                    // get the attributes
+                    uint8_t *p = bufpkt->data + sizeof(cmd_phone_notify_t);
+                    for (uint8_t i = 0; i < msg->attr_count; i++)
+                    {
+                        cmd_phone_attribute_t *att = (cmd_phone_attribute_t *)p;
+                        uint8_t *data = p + sizeof(cmd_phone_attribute_t);
+                        SYS_LOG("BT", APP_LOG_LEVEL_INFO, "X ATTR ID:%d L:%d %s", att->attr_idx, att->str_len, data);
+                        p += sizeof(cmd_phone_attribute_t) + att->str_len;
+                    }
+                    
+                    // get the actions
+                    for (uint8_t i = 0; i < msg->action_count; i++)
+                    {
+                        cmd_phone_action_t *act = (cmd_phone_action_t *)p;
+                        uint8_t *data = p + sizeof(cmd_phone_action_t);                       
+                        SYS_LOG("BT", APP_LOG_LEVEL_INFO, "X ACT ID:%d L:%d AID:%d ALEN:%d %s", act->id, act->attr_count, act->attr_id, act->str_len, data);
+                        p += sizeof(cmd_phone_action_t) + act->str_len;
+                    }
+
+                    
+                    // XXX TODO not sure about a reply? will check
+                }
+                else
+                {
+                    // Complain
+                    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "XXX Unimplemented Endpoint %d", bufpkt->endpoint);
+                }
+                
+                free(bufpkt->data);
+                free(bufpkt);
+                
+                // do we need to process more?
+                uint16_t qlen = ringbuf_bytes_used(rx_ring_buf);
+    
+                // post back to our own queue with the remaining bytes
+                if (qlen > 0)
+                {
+                    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "BT Adding leftover data message");
+                    bluetooth_data_rx_notify(qlen);
+                }
             }
         }
         else
         {
-            // nothing emerged from the buffer
+            
         }
     }
 }
+
+void _timer_callback(TimerHandle_t timer)
+{
+    /* Optionally do something if the pxTimer parameter is NULL. */
+    // configASSERT(timer);
+    SYS_LOG("BT", APP_LOG_LEVEL_ERROR, "packet receive buffer timeout!!");
+    // Sorry, time's up
+    ringbuf_reset(rx_ring_buf);
+
+    /* Do not use a block time if calling a timer API function
+    from a timer callback function, as doing so could cause a
+    deadlock! */
+    xTimerStop(timer, 0);
+}
+
+

@@ -1,8 +1,12 @@
+/* btstack_rebble.c
+ * The glue logic between BTStack and RebbleOS
+ * RebbleOS
+ *
+ * Author: Barry Carter <barry.carter@gmail.com>
+ */
 #include "btstack.h"
 #include "btstack_rebble.h"
 #include "btstack_chipset_cc256x.h"
-// #include "btstack_run_loop_embedded.h"
-// hal_uart_dma.c implementation
 #include "hal_uart_dma.h"
 #include "rebbleos.h"
 #include "btstack_spp.h"
@@ -10,7 +14,7 @@
 #define RFCOMM_SERVER_CHANNEL 1
 
 static uint16_t  rfcomm_channel_id;
-static uint8_t   spp_service_buffer[150];
+static uint8_t   spp_service_buffer[98];
 static uint8_t   le_notification_enabled;
 static hci_con_handle_t att_con_handle;
 
@@ -20,6 +24,9 @@ static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle, 
 
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 
+// for tx keep the packet outgoin in here
+uint8_t *_tx_buf = NULL;
+uint8_t _tx_buf_len = 0;
 
 // handlers
 static void dummy_handler(void);
@@ -92,13 +99,14 @@ void bt_device_init(void)
     rfcomm_register_service(packet_handler, RFCOMM_SERVER_CHANNEL, 0xffff);
 
     // init SDP, create record for SPP and register with SDP
+    // we could cache this in the flash
     memset(spp_service_buffer, 0, sizeof(spp_service_buffer));
     spp_create_sdp_record(spp_service_buffer, 0x10001, RFCOMM_SERVER_CHANNEL, "RebbleSerial");
     sdp_register_service(spp_service_buffer);
     SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "SDP service record size: %u", de_get_len(spp_service_buffer));
     sdp_init();
 
-    gap_set_local_name("Pebble Time");
+    gap_set_local_name("Pebble Time RblOS");
     gap_ssp_set_io_capability(SSP_IO_CAPABILITY_DISPLAY_YES_NO);
     gap_discoverable_control(1);
 
@@ -126,6 +134,22 @@ void bt_device_init(void)
     
     btstack_run_loop_execute();
 }
+
+// tx shortcuts
+void bt_device_request_tx(uint8_t *data, uint16_t len)
+{
+//     if (len > sizeof(_tx_buf))
+//     {
+//         SYS_LOG("BTSPP", APP_LOG_LEVEL_ERROR, "Data size %d > buffer size %d", len, sizeof(_tx_buf));
+//         return;
+//     }
+//     memcpy(_tx_buf, data, len);
+    _tx_buf = data;
+    _tx_buf_len = len;
+    
+    btstack_request_tx();
+}
+
 // BT stack needs these HAL implementations
 
 #include "hal_time_ms.h"
@@ -168,6 +192,7 @@ void bluetooth_power_cycle(void)
 void bt_stack_tx_done()
 {
     (*tx_done_handler)();
+    bluetooth_tx_complete_from_isr();
 }
 
 void bt_stack_rx_done()
@@ -232,25 +257,25 @@ void hal_uart_dma_receive_block(uint8_t *data, uint16_t size)
 // - if buffer == NULL, don't copy data, just return size of value
 // - if buffer != NULL, copy data and return number bytes copied
 // @param offset defines start of attribute value
-static uint16_t att_read_callback(hci_con_handle_t con_handle, uint16_t att_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size){
+static uint16_t att_read_callback(hci_con_handle_t con_handle, uint16_t att_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size)
+{
     UNUSED(con_handle);
 
-    if (att_handle == ATT_CHARACTERISTIC_0000FF11_0000_1000_8000_00805F9B34FB_01_VALUE_HANDLE){
-        uint8_t tmp_buf[130];
-        uint8_t buf_len = bluetooth_tx_buf_get_bytes(tmp_buf, 128);
-        if (buf_len == 0)
-            return 0;
-        return att_read_callback_handle_blob((const uint8_t *)tmp_buf, buf_len, offset, buffer, buffer_size);
+    if (att_handle == ATT_CHARACTERISTIC_0000FF11_0000_1000_8000_00805F9B34FB_01_VALUE_HANDLE)
+    {
+        return att_read_callback_handle_blob((const uint8_t *)_tx_buf, _tx_buf_len, offset, buffer, buffer_size);
     }
     return 0;
 }
 
 // write requests
-static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size){
+static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size)
+{
     // ignore cancel sent for new connections
     if (transaction_mode == ATT_TRANSACTION_MODE_CANCEL) return 0;
     // find characteristic for handle
-    switch (att_handle){
+    switch (att_handle)
+    {
         case ATT_CHARACTERISTIC_0000FF11_0000_1000_8000_00805F9B34FB_01_CLIENT_CONFIGURATION_HANDLE:
             le_notification_enabled = little_endian_read_16(buffer, 0) == GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION;
             att_con_handle = con_handle;
@@ -268,11 +293,13 @@ static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle, 
 
 void btstack_request_tx(void)
 {
-    if (rfcomm_channel_id){
+    if (rfcomm_channel_id)
+    {
         rfcomm_request_can_send_now_event(rfcomm_channel_id);
     }
 
-    if (le_notification_enabled) {
+    if (le_notification_enabled)
+    {
         att_server_request_can_send_now_event(att_con_handle);
     }
 }
@@ -284,19 +311,17 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
     uint16_t  mtu;
     int i;
     uint8_t event;
-    uint8_t tmp_buf[128];
-    uint8_t buf_len;
-    
+
     if (packet_type == HCI_EVENT_PACKET)
         event = hci_event_packet_get_type(packet);
     
-//     SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "RFCOMM PH %d %d %d", packet_type, channel, event);
-    
     if (!rebbleos_module_is_enabled(MODULE_BLUETOOTH))
     {
-        switch (event) {
+        switch (event)
+        {
             case BTSTACK_EVENT_STATE:
-                if (btstack_event_state_get_state(packet) != HCI_STATE_WORKING) {
+                if (btstack_event_state_get_state(packet) != HCI_STATE_WORKING)
+                {
                         SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "BTstack Initialising....");
                         return;
                 }
@@ -307,12 +332,11 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
         return;
     }
     
-    switch (packet_type) {
-            case HCI_EVENT_PACKET:
-
-//                 SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "HCI EVENT: %d", event);
-                
-                    switch (event) {
+    switch (packet_type)
+    {
+            case HCI_EVENT_PACKET:              
+                    switch (event)
+                    {
                         case HCI_EVENT_PIN_CODE_REQUEST:
                             // inform about pin code request
                             SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "Pin code request - using '0000'");
@@ -332,12 +356,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 
                         case ATT_EVENT_CAN_SEND_NOW:
                             SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "ATT %d %d", packet_type, channel);
-                             // could do with avoiding thismemory and copy...
                             
-                            buf_len = bluetooth_tx_buf_get_bytes(tmp_buf, 128);
-                            if (buf_len == 0)
+                            if (_tx_buf_len == 0)
                                 break;
-                            att_server_notify(att_con_handle, ATT_CHARACTERISTIC_0000FF11_0000_1000_8000_00805F9B34FB_01_VALUE_HANDLE, (uint8_t*) tmp_buf, buf_len);
+                            att_server_notify(att_con_handle, ATT_CHARACTERISTIC_0000FF11_0000_1000_8000_00805F9B34FB_01_VALUE_HANDLE, (uint8_t*)  _tx_buf, _tx_buf_len);
                             break;
 
                         case RFCOMM_EVENT_INCOMING_CONNECTION:
@@ -353,9 +375,12 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         case RFCOMM_EVENT_CHANNEL_OPENED:
                             SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "RFCOMM CO %d %d", packet_type, channel);
                                 // data: event(8), len(8), status (8), address (48), server channel(8), rfcomm_cid(16), max frame size(16)
-                                if (rfcomm_event_channel_opened_get_status(packet)) {
+                                if (rfcomm_event_channel_opened_get_status(packet))
+                                {
                                     SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "RFCOMM channel open failed, status %d\n", rfcomm_event_channel_opened_get_status(packet));
-                                } else {
+                                }
+                                else
+                                {
                                     rfcomm_channel_id = rfcomm_event_channel_opened_get_rfcomm_cid(packet);
                                     mtu = rfcomm_event_channel_opened_get_max_frame_size(packet);
                                     SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "RFCOMM channel open succeeded. New RFCOMM Channel ID %d, max frame size %d\n", rfcomm_channel_id, mtu);
@@ -363,11 +388,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                                 break;
 
                         case RFCOMM_EVENT_CAN_SEND_NOW:
-                            // XXX TODO could do with avoiding this memory and copy...
-                            buf_len = bluetooth_tx_buf_get_bytes(tmp_buf, 128);
-                            if (buf_len == 0)
-                                break;
-                            rfcomm_send(rfcomm_channel_id, tmp_buf, buf_len);
+                            rfcomm_send(rfcomm_channel_id, _tx_buf, _tx_buf_len);
                             break;
 
                         case RFCOMM_EVENT_CHANNEL_CLOSED:
@@ -382,7 +403,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     
             case RFCOMM_DATA_PACKET:
                 SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "RCV: '");
-                for (i = 0; i < size; i++) {
+                for (i = 0; i < size; i++)
+                {
                     SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "0x%x", packet[i]);
                 }
                 

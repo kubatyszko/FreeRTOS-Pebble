@@ -1,5 +1,5 @@
 /* snowy_bluetooth.c
- * 
+ * Hardware driver for the cc256x chipset
  * RebbleOS
  *
  * Author: Barry Carter <barry.carter@gmail.com>
@@ -16,64 +16,12 @@
 #include "btstack_rebble.h"
 #include "snowy_bluetooth.h"
 
-// Init USART1
-// DMA
-// IRQ
-// usart1 global interrupt?
-// dma rx/tx
-// clocks
-// 
-
 #define BT_SHUTD        GPIO_Pin_12
 volatile int tx_done, rx_done = 0;
 
 void _bt_reset_hci_dma(void);
 void _bluetooth_dma_init(void);
 void _usart1_init(uint32_t baud);
-
-/*
-const uint8_t hci_reset_bytes[] = { 0x01, 0x03, 0x0c, 0x00 };
-char gbuf[10];
-
-void _bt_reset_hci_dma(void)
-{
-    char buf[50];
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "HCI Reset DMA");
-    tx_done = 0;
-    
-    while(USART1->SR & USART_FLAG_RXNE)
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "Buf has %c", USART_ReceiveData(USART1));
-    
-    // send magic HCI reset
-    hw_bluetooth_recv_dma(gbuf, 7);
-    hw_bluetooth_send_dma(hci_reset_bytes, sizeof(hci_reset_bytes));
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "HCI Reset Sleep");
-    
-    int to = 0;
-    while(!tx_done)
-    {
-        if (to > 10000)
-            break;
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "TX...");
-        to++;
-        do_delay_ms(1);
-    }
-    
-    while (!rx_done)
-    {
-        if (to > 10000)
-            break;
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "RX...");
-        to++;
-    }
-    printf("Got ");
-    for (int i = 0; i < 7; i++)
-    {       
-        printf("0x%0x ", gbuf[i]);
-    }
-    printf("\n");
-}
-*/
 
 uint8_t hw_bluetooth_init(void)
 {
@@ -86,7 +34,6 @@ uint8_t hw_bluetooth_init(void)
     
     //GPIO_InitTypeDef gpio_init_structure;
     GPIO_InitTypeDef gpio_init_bt;
-    
     
     // nSHUTD on B12
     gpio_init_bt.GPIO_Mode = GPIO_Mode_OUT;
@@ -114,22 +61,14 @@ uint8_t hw_bluetooth_init(void)
     GPIO_PinAFConfig(GPIOA, GPIO_PinSource8, GPIO_AF_MCO);
    
     // configure DMA
-     _usart1_init(115200);
+    _usart1_init(115200);
     _bluetooth_dma_init();
     
     // Well, lets go for broke. Dunno what this does
     GPIO_SetBits(GPIOA, GPIO_Pin_4);
     
     hw_bluetooth_clock_on();
-//     if (hw_bluetooth_power_cycle())
-//     {
-//         DRV_LOG("BT", APP_LOG_LEVEL_ERROR, "Bluetooth Failed!");
-//         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-//         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);     
-//         stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
-//         return 1;
-//     }
-    
+
     // initialise BTStack.... Go!
     bt_device_init();
     
@@ -148,7 +87,7 @@ uint8_t hw_bluetooth_init(void)
 // We are going to pass the clock out through MCO1 pin
 void hw_bluetooth_clock_on(void)
 {
-    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Powering up exterinal clock...");
+    DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Powering up external clock...");
     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
@@ -305,39 +244,23 @@ void _usart1_init(uint32_t baud)
     
     // XXX shorten
 
-    // RX (10)
-    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_10;
+    // RX (10) TX (9)
+    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_10 | GPIO_Pin_9;
     GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
     GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
     GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
     GPIO_Init(GPIOA, &GPIO_InitStruct);
     
-    // CTS (11)
-    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_11;
+    // CTS (11) RTS (12)
+    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_11 | GPIO_Pin_12
     GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
     GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
     GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL;
     GPIO_Init(GPIOA, &GPIO_InitStruct);
-    
-    // TX (9)
-    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_9;
-    GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
-    GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
-    GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
-    GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
-    GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    // RTS (12)
-    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_12;
-    GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
-    GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
-    GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
-    GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL;
-    GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    // Real BT uses flow control
+ 
+    // BT uses HW flow control
     GPIO_PinAFConfig(GPIOA, GPIO_PinSource9, GPIO_AF_USART1);
     GPIO_PinAFConfig(GPIOA, GPIO_PinSource10, GPIO_AF_USART1);
     GPIO_PinAFConfig(GPIOA, GPIO_PinSource11, GPIO_AF_USART1);
@@ -496,7 +419,6 @@ void hw_bluetooth_disable_cts_irq(void)
 
 void hw_bluetooth_send_dma(uint32_t *data, uint32_t len)
 {
-//     SYS_LOG("BT", APP_LOG_LEVEL_INFO, "DMA Tx");
     // XXX released in IRQ
     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
@@ -504,8 +426,7 @@ void hw_bluetooth_send_dma(uint32_t *data, uint32_t len)
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
     stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_UART8);
-
-    
+   
     DMA_InitTypeDef dma_init_struct;
     NVIC_InitTypeDef nvic_init_struct;
     
@@ -578,14 +499,14 @@ void hw_bluetooth_recv_dma(uint32_t *data, size_t len)
     DMA_ITConfig(DMA2_Stream2, DMA_IT_TC, ENABLE);
 }
 
+/* Util function to directly read and write the USART */
 ssize_t _bt_write(const void *buf, size_t len)
 {
     int i;
     for (i = 0; i < len; i++)
     {
-      while (!(USART1->SR & USART_FLAG_TXE));
-//       USART1->DR =  ((uint8_t *) buf)[i]; 
-      USART_SendData(USART1, ((uint8_t *) buf)[i]);
+        while (!(USART1->SR & USART_FLAG_TXE));
+        USART_SendData(USART1, ((uint8_t *) buf)[i]);
     }
     
     return i;
@@ -596,10 +517,8 @@ ssize_t _bt_read(void *buf, size_t len)
     int i;
     for (i = 0; i < len; i++)
     {
-        
-      while (!(USART1->SR & USART_FLAG_RXNE));
-      ((uint8_t *) buf)[i] = USART_ReceiveData(USART1);
-//       ((uint8_t *) buf)[i] = USART1->DR & 0xff;
+        while (!(USART1->SR & USART_FLAG_RXNE));
+        ((uint8_t *) buf)[i] = USART_ReceiveData(USART1);
     }
     return i;
 }
@@ -608,8 +527,5 @@ ssize_t _bt_read(void *buf, size_t len)
 // Do delay for nTime milliseconds
 void do_delay_ms(uint32_t ms) {
     vTaskDelay(pdMS_TO_TICKS(ms));
-    return;
-   
+    return;   
 }
-
-
