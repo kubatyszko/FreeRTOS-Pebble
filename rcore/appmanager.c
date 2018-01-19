@@ -36,6 +36,7 @@ static void _appmanager_add_to_manifest(App *app);
 void back_long_click_handler(ClickRecognizerRef recognizer, void *context);
 void back_long_click_release_handler(ClickRecognizerRef recognizer, void *context);
 void app_select_single_click_handler(ClickRecognizerRef recognizer, void *context);
+void app_back_single_click_handler(ClickRecognizerRef recognizer, void *context);
 
 static TaskHandle_t _app_task_handle;
 static TaskHandle_t _app_thread_manager_task_handle;
@@ -68,7 +69,7 @@ void nivz_main(void);
 void appmanager_init(void)
 {
     struct file empty = { 0, 0, 0 }; // TODO: make files optional in `App` to avoid this
-   
+    
     // load the baked in 
     _appmanager_add_to_manifest(_appmanager_create_app("System", APP_TYPE_SYSTEM, systemapp_main, true, &empty, &empty));
     _appmanager_add_to_manifest(_appmanager_create_app("Simple", APP_TYPE_FACE, simple_main, true, &empty, &empty));
@@ -128,19 +129,30 @@ static App *_appmanager_create_app(char *name, uint8_t type, void *entry_point, 
     return app;
 }
 
+/* note that these flags are inverted */
+#define APPDB_DBFLAGS_WRITTEN 1
+#define APPDB_DBFLAGS_OVERWRITING 2
+#define APPDB_DBFLAGS_DEAD 4
+
+#define APPDB_IS_EOF(ent) (((ent).last_modified == 0xFFFFFFFF) && ((ent).hash == 0xFF) && ((ent).dbflags == 0x3F) && ((ent).key_length == 0x7F) && ((ent).value_length == 0x7FF))
 
 struct appdb
 {
-    uint32_t paged_incr;  //0x58F6AExx
-    uint16_t app_cache_id; //  B5 3E trek v2 also appears in app cache
-    uint16_t unk;  // 0x0FC13Exx
-    uint32_t application_id; // in app as @000037f
+    /* below is common to all settings DB entries */
+    uint32_t last_modified;  //0x58F6AExx
+    uint8_t hash;
+    uint8_t dbflags:6;
+    uint32_t key_length:7;
+    uint32_t value_length:11;
+
+    uint32_t application_id;
+    
     Uuid app_uuid;  // 16 bytes
-    uint32_t unk_13;
-    uint32_t unk_17;
-    uint16_t sdk_version;
-    uint16_t app_version;
-    uint16_t zeros;
+    uint32_t flags; /* pebble_process_info.h, PebbleProcessInfoFlags in the SDK */
+    uint32_t icon;
+    uint8_t app_version_major, app_version_minor;
+    uint8_t sdk_version_major, sdk_version_minor;
+    uint8_t app_face_bg_color, app_face_template_id;
     uint8_t app_name[32];
     uint8_t unk_arr_company[32];  // always blank
     uint8_t unk_arr[32]; // always blank
@@ -179,9 +191,24 @@ void _appmanager_flash_load_app_manifest(void)
         if (fs_read(&fd, &appdb, sizeof(appdb)) != sizeof(appdb))
             break;
 
-        if (appdb.application_id == 0xFFFFFFFFu)
+        if (APPDB_IS_EOF(appdb))
             break;
 
+        if (appdb.dbflags & APPDB_DBFLAGS_WRITTEN) {
+            KERN_LOG("app", APP_LOG_LEVEL_WARNING, "appdb: file that is not written before eof, at index %d", i);
+            continue;
+        }
+        
+        if ((appdb.dbflags & APPDB_DBFLAGS_DEAD) == 0)
+            continue;
+        
+        if ((appdb.dbflags & APPDB_DBFLAGS_OVERWRITING) == 0)
+            KERN_LOG("app", APP_LOG_LEVEL_WARNING, "appdb: file %08x is mid-overwrite; I feel nervous", appdb.application_id);
+
+        if (appdb.application_id == 0xFFFFFFFFu) {
+            KERN_LOG("app", APP_LOG_LEVEL_WARNING, "appdb: file is written, but has no contents?");
+            break;
+        }
         
         snprintf(buffer, 14, "@%08lx/app", appdb.application_id);
         if (fs_find_file(&app_file, buffer) < 0)
@@ -202,7 +229,7 @@ void _appmanager_flash_load_app_manifest(void)
             // it's real... so far. Lets crc check to make sure
             // TODO
             // crc32....(header.header)
-            KERN_LOG("app", APP_LOG_LEVEL_INFO, "VALID App Found %s", header.name);
+            KERN_LOG("app", APP_LOG_LEVEL_INFO, "appdb: app \"%s\" found, flags %08x, icon %08x", header.name, appdb.flags, appdb.icon);
 
             // main gets set later
             _appmanager_add_to_manifest(_appmanager_create_app(header.name,
@@ -315,16 +342,16 @@ void appmanager_post_notification(void)
 /* Always adds to the running app's queue.  Note that this is only
  * reasonable to do from the app thread: otherwise, you can race with the
  * check for the timer head.  */
-void appmanager_timer_add(AppTimer *timer)
+void appmanager_timer_add(CoreTimer *timer)
 {
-    AppTimer **tnext = &_running_app->timer_head;
+    CoreTimer **tnext = &_running_app->timer_head;
     
     /* until either the next pointer is null (i.e., we have hit the end of
      * the list), or the thing that the next pointer points to is further in
      * the future than we are (i.e., we want to insert before the thing that
      * the next pointer points to)
      */
-    while (*tnext && (timer->when < (*tnext)->when)) {
+    while (*tnext && (timer->when > (*tnext)->when)) {
         tnext = &((*tnext)->next);
     }
     
@@ -332,9 +359,9 @@ void appmanager_timer_add(AppTimer *timer)
     *tnext = timer;
 }
 
-void appmanager_timer_remove(AppTimer *timer)
+void appmanager_timer_remove(CoreTimer *timer)
 {
-    AppTimer **tnext = &_running_app->timer_head;
+    CoreTimer **tnext = &_running_app->timer_head;
     
     while (*tnext) {
         if (*tnext == timer) {
@@ -359,6 +386,13 @@ void app_event_loop(void)
     AppMessage data;
     
     KERN_LOG("app", APP_LOG_LEVEL_INFO, "App entered mainloop");
+    
+    // Do this before window load, that way they have a chance to override
+    if (_running_app->type != APP_TYPE_FACE)
+    {
+        // Enables default closing of windows, and through that, apps
+        window_single_click_subscribe(BUTTON_ID_BACK, app_back_single_click_handler);
+    }
     
     // we assume they are configured now
     rbl_window_load_proc();
@@ -437,7 +471,7 @@ void app_event_loop(void)
             /* We woke up because we hit a timer expiry.  Dequeue first,
              * then invoke -- otherwise someone else could insert themselves
              * at the head, and we would wrongfully dequeue them!  */
-            AppTimer *timer = _running_app->timer_head;
+            CoreTimer *timer = _running_app->timer_head;
             assert(timer);
             
             SYS_LOG("app", APP_LOG_LEVEL_INFO, "woke up for a timer");
@@ -732,6 +766,18 @@ void app_select_single_click_handler(ClickRecognizerRef recognizer, void *contex
             appmanager_app_start("System");
             break;
     }
+}
+
+void app_back_single_click_handler(ClickRecognizerRef recognizer, void *context)
+{
+    // Pop windows off
+    Window *popped = window_stack_pop(true);
+    printf("POPPED! WAS THIS THE ROOT? %d\n", popped->node->previous == NULL);
+    if (popped->node->previous == NULL)
+    {
+        appmanager_app_start("System");
+    }
+    window_dirty(true);
 }
 
 /*

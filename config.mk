@@ -34,6 +34,8 @@ CFLAGS_all += -Wno-unused-variable -Wno-unused-function
 LDFLAGS_all += -nostartfiles -nostdlib
 LIBS_all += -lgcc
 
+SRCS_all += build/version.c
+
 SRCS_all += FreeRTOS/croutine.c
 SRCS_all += FreeRTOS/event_groups.c
 SRCS_all += FreeRTOS/list.c
@@ -109,7 +111,9 @@ SRCS_all += rwatch/graphics/gbitmap.c
 SRCS_all += rwatch/graphics/graphics.c
 SRCS_all += rwatch/graphics/font_loader.c
 SRCS_all += rwatch/event/tick_timer_service.c
+SRCS_all += rwatch/event/app_timer.c
 SRCS_all += rwatch/ui/layer/status_bar_layer.c
+SRCS_all += rwatch/ui/animation/animation.c
 
 SRCS_all += Watchfaces/simple.c
 SRCS_all += Watchfaces/nivz.c

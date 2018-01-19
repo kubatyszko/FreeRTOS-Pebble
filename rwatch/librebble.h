@@ -38,9 +38,10 @@
 #include "buttons.h"
 #include "rebble_time.h"
 #include "tick_timer_service.h"
+#include "animation.h"
 #include "appmanager.h"
 #include "libros_graphics.h"
-
+#include "app_timer.h"
 
 void rbl_draw(void);
 struct tm *rbl_get_tm(void);

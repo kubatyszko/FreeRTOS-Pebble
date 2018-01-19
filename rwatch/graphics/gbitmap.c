@@ -79,7 +79,7 @@ void _gbitmap_draw(GBitmap *bitmap, GRect clipping_bounds)
     int16_t clip_x = clipping_bounds.origin.x > bitmap->bounds.origin.x 
             ? clipping_bounds.origin.x - bitmap->bounds.origin.x
             : 0;
-            
+    
     uint8_t bpp = 8;
     switch (bitmap->format)
     {
@@ -92,8 +92,8 @@ void _gbitmap_draw(GBitmap *bitmap, GRect clipping_bounds)
     
     clip_x = ((clip_x + ((8 / bpp) - 1)) / (8 / bpp));
     
-    uint16_t newx = bitmap->bounds.origin.x;
-    uint16_t newy = bitmap->bounds.origin.y + clip_y;
+    int16_t newx = bitmap->bounds.origin.x;
+    int16_t newy = bitmap->bounds.origin.y + clip_y;
 
     for(int y = 0; y < h; y++)
     {
@@ -102,7 +102,12 @@ void _gbitmap_draw(GBitmap *bitmap, GRect clipping_bounds)
         GColor argb;
         
         for(int x = clip_x; x < w; x++)
-        {            
+        {   
+            /* XXX: Replace with more efficient bounds checking later. */         
+            if (((x + newx) < 0) || ((x + newx) >= DISPLAY_COLS) ||
+                ((y + newy) < 0) || ((y + newy) >= DISPLAY_ROWS))
+                continue;
+            
             if (bitmap->format == GBitmapFormat2BitPalette)
             {
                 // shift the bits according to their position mod
