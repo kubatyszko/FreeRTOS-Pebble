@@ -18,6 +18,7 @@ CFLAGS_all += -IApps
 CFLAGS_all += -IApps/System
 CFLAGS_all += -IConfig
 CFLAGS_all += -Ircore
+CFLAGS_all += -Ircore/protocol
 CFLAGS_all += -Irwatch
 CFLAGS_all += -Irwatch/ui
 CFLAGS_all += -Irwatch/ui/layer
@@ -95,6 +96,9 @@ SRCS_all += rcore/log.c
 SRCS_all += rcore/resource.c
 SRCS_all += rcore/heap_app.c
 SRCS_all += rcore/watchdog.c
+
+SRCS_all += rcore/protocol/protocol_notification.c
+SRCS_all += rcore/protocol/protocol_system.c
 
 SRCS_all += rwatch/librebble.c
 SRCS_all += rwatch/ngfxwrap.c
