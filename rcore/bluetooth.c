@@ -45,7 +45,7 @@
 #include "rebbleos.h"
 #include "rbl_bluetooth.h"
 #include "ringbuf.h"
-#include "endpoint.h"
+#include "pebble_protocol.h"
 
 // BT runloop
 static TaskHandle_t _bt_task;
@@ -54,7 +54,7 @@ static StaticTask_t _bt_task_buf;
 
 // for the command processer
 static TaskHandle_t _bt_cmd_task;
-static StackType_t _bt_cmd_task_stack[1300];
+static StackType_t _bt_cmd_task_stack[1500];
 static StaticTask_t _bt_cmd_task_buf;
 
 static xQueueHandle _bt_cmd_queue;
@@ -97,7 +97,7 @@ pbl_transport_packet *_parse_packet(void);
 void bluetooth_init(void)
 {
     _bt_task = xTaskCreateStatic(_bt_thread, "BT", 2000, NULL, tskIDLE_PRIORITY + 3UL, _bt_task_stack, &_bt_task_buf);
-    _bt_cmd_task = xTaskCreateStatic(_bt_cmd_thread, "BTCmd", 1300, NULL, tskIDLE_PRIORITY + 4UL, _bt_cmd_task_stack, &_bt_cmd_task_buf);
+    _bt_cmd_task = xTaskCreateStatic(_bt_cmd_thread, "BTCmd", 1500, NULL, tskIDLE_PRIORITY + 4UL, _bt_cmd_task_stack, &_bt_cmd_task_buf);
     _timer_buffer_refresh = xTimerCreateStatic("T", pdMS_TO_TICKS(BUFFER_CLEAR_TIMER_MS), pdFALSE, ( void * ) 0, _timer_callback, &_timer_buffer_refresh_buf);
     
     _bt_tx_mutex = xSemaphoreCreateMutexStatic(&_bt_tx_mutex_buf);
@@ -179,10 +179,10 @@ pbl_transport_packet *_parse_packet(void)
     pkt->length = SWAP_UINT16(pkt->length);
     pkt->endpoint = SWAP_UINT16(pkt->endpoint);
     SYS_LOG("XXXXX", APP_LOG_LEVEL_INFO, "PKT L:0x%x E:0x%x", pkt->length, pkt->endpoint);
-    
+    /*
     for (int i = 0; i < qlen; i++) {
         SYS_LOG("XXXXX", APP_LOG_LEVEL_INFO, "0x%x", buf_start[i]);
-    }
+    }*/
     
     if (qlen + 4 < pkt->length)
     {
@@ -307,16 +307,6 @@ static void _bt_thread(void *pvParameters)
     return;
 }
 
-uint8_t notification[100];
-uint8_t notification_len;
-
-uint8_t *notification_get(void)
-{
-    return notification;
-}
-
-static const uint8_t FW_VERSION[] = "v3.4.5-2RebbleOS";
-
 // TODO
 static void _bt_cmd_thread(void *pvParameters)
 {
@@ -366,51 +356,16 @@ static void _bt_cmd_thread(void *pvParameters)
                 // Endpoint Firmware Version
                 if(bufpkt->endpoint == ENDPOINT_FIRMWARE_VERSION)
                 {       
-                    switch(bufpkt->data[0])
-                    {
-                        case FIRMWARE_VERSION_GETVERSION:
-                            SYS_LOG("BT", APP_LOG_LEVEL_INFO, "Get Version");
-                            uint16_t tx_len = strlen(FW_VERSION);
-                            bluetooth_send_packet(bufpkt->endpoint, FW_VERSION, tx_len);
-                            break;
-                    }
+                    process_version_packet(bufpkt->data);
                 }
                 // Endpoint Set Time
                 else if (bufpkt->endpoint == ENDPOINT_SET_TIME)
                 {
-                    cmd_set_time_t *time = (cmd_set_time_t *)bufpkt->data;
-                    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "XXX Time Set cmd %d, ts %d tso %d, tz %d", time->cmd, time->ts, time->tso, time->tz);
+                    process_set_time_packet(bufpkt->data);
                 }
                 else if (bufpkt->endpoint == ENDPOINT_PHONE_MSG)
                 {
-                    // XXX get rid of the packet to the message thread
-                    
-                    // head the header details
-                    cmd_phone_notify_t *msg = (cmd_phone_notify_t *)bufpkt->data;
-                    
-                    SYS_LOG("BT", APP_LOG_LEVEL_INFO, "X attrc %d actc %d", msg->attr_count, msg->action_count);
-                    
-                    // get the attributes
-                    uint8_t *p = bufpkt->data + sizeof(cmd_phone_notify_t);
-                    for (uint8_t i = 0; i < msg->attr_count; i++)
-                    {
-                        cmd_phone_attribute_t *att = (cmd_phone_attribute_t *)p;
-                        uint8_t *data = p + sizeof(cmd_phone_attribute_t);
-                        SYS_LOG("BT", APP_LOG_LEVEL_INFO, "X ATTR ID:%d L:%d %s", att->attr_idx, att->str_len, data);
-                        p += sizeof(cmd_phone_attribute_t) + att->str_len;
-                    }
-                    
-                    // get the actions
-                    for (uint8_t i = 0; i < msg->action_count; i++)
-                    {
-                        cmd_phone_action_t *act = (cmd_phone_action_t *)p;
-                        uint8_t *data = p + sizeof(cmd_phone_action_t);                       
-                        SYS_LOG("BT", APP_LOG_LEVEL_INFO, "X ACT ID:%d L:%d AID:%d ALEN:%d %s", act->id, act->attr_count, act->attr_id, act->str_len, data);
-                        p += sizeof(cmd_phone_action_t) + act->str_len;
-                    }
-
-                    
-                    // XXX TODO not sure about a reply? will check
+                    process_notification_packet(bufpkt->data);
                 }
                 else
                 {

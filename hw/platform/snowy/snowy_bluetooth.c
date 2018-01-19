@@ -253,7 +253,7 @@ void _usart1_init(uint32_t baud)
     GPIO_Init(GPIOA, &GPIO_InitStruct);
     
     // CTS (11) RTS (12)
-    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_11 | GPIO_Pin_12
+    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_11 | GPIO_Pin_12;
     GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
     GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
