@@ -138,7 +138,7 @@ PropertyAnimation * property_animation_create(const PropertyAnimationImplementat
 {
     SYS_LOG("property_animation", APP_LOG_LEVEL_INFO, "property_animation_create");
     
-    PropertyAnimation *property_animation = app_calloc(1, sizeof(PropertyAnimation));
+    PropertyAnimation *property_animation = calloc(1, sizeof(PropertyAnimation));
     Animation *animation = animation_create();
     
     property_animation->animation = animation;
@@ -162,7 +162,7 @@ Animation * property_animation_get_animation(PropertyAnimation * property_animat
 void property_animation_destroy(PropertyAnimation *property_animation)
 {
     animation_destroy(property_animation->animation);
-    app_free(property_animation);
+    free(property_animation);
 }
 
 /*

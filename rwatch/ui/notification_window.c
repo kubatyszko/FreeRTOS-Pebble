@@ -117,13 +117,15 @@ static void pop_notification_click_handler(ClickRecognizerRef recognizer, void *
     while (notification_window->active->next != NULL) {
         tmp = notification_window->active;
         notification_window->active = notification_window->active->next;
-        app_free(tmp);
+        free(tmp);
     }
-    
-    app_free(notification_window->active);
+
+    free(notification_window->active);
+    // TODO XXX this all seems bad
     
     window_stack_pop(true);
     window_dirty(true);
+    
 }
 
 static void click_config_provider(void *context)
@@ -140,6 +142,7 @@ static void click_config_provider(void *context)
 
 void notification_window_load(Window *window)
 {
+    SYS_LOG("NW", APP_LOG_LEVEL_INFO, "LOAD!");
     Layer *layer = window_get_root_layer(window);
     
     GRect bounds = layer_get_unobstructed_bounds(layer);
@@ -171,7 +174,7 @@ void notification_window_update_proc(Layer *layer, GContext *ctx)
     char *title = notification->title;
     char *body = notification->body;
     
-    SYS_LOG("notification_window", APP_LOG_LEVEL_DEBUG, app);
+    SYS_LOG("notywin", APP_LOG_LEVEL_DEBUG, app);
     
     // Draw the background:
     graphics_context_set_fill_color(ctx, notification->color);
@@ -233,13 +236,13 @@ void notification_window_update_proc(Layer *layer, GContext *ctx)
 
 void notification_window_unload(Window *window)
 {
-    
-    app_free(notification_window);
+    // XXX TODO this also seems bad
+    free(notification_window);
 }
 
 Notification* notification_create(const char *app_name, const char *title, const char *body, GBitmap *icon, GColor color)
 {
-    Notification *notification = app_calloc(1, sizeof(Notification));
+    Notification *notification = calloc(1, sizeof(Notification));
     
     if (notification == NULL)
     {
@@ -261,7 +264,7 @@ void window_stack_push_notification(Notification *notification)
     if (notification_window == NULL || notification_window->window == NULL)
     {
         // Make the window
-        notification_window = app_calloc(1, sizeof(NotificationWindow));
+        notification_window = calloc(1, sizeof(NotificationWindow));
         notification_window->window = window_create();
         
         window_set_window_handlers(notification_window->window, (WindowHandlers) {

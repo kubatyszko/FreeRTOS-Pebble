@@ -14,7 +14,7 @@
 #define ANIMATION_TICKS (pdMS_TO_TICKS(1000) / ANIMATION_FPS)
 
 /* XXX: The memory allocation story here is kind of a mess.  We do an
- * app_malloc on this, and store a bunch of state in the application's
+ * malloc on this, and store a bunch of state in the application's
  * memory -- you know, where the application could trample on it.  This is
  * widely considered to be bad.  I think the best way to deal with this is
  * to come up with a 'handle' object stored in the App structure, which is
@@ -30,7 +30,7 @@ Animation *animation_create()
 {
     SYS_LOG("animation", APP_LOG_LEVEL_INFO, "animation_create");
     
-    Animation *anim = app_calloc(1, sizeof(Animation));
+    Animation *anim = calloc(1, sizeof(Animation));
     
     return anim;
 }
@@ -40,7 +40,7 @@ bool animation_destroy(Animation *anim)
     if (!anim)
         return false;
     
-    app_free(anim);
+    free(anim);
     
     return true;
 }

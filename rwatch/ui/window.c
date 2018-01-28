@@ -175,7 +175,7 @@ void window_destroy(Window *window)
     // free all of the layers
     layer_destroy(window->root_layer);
     // and now the window
-    app_free(window);
+    free(window);
 }
 
 /*

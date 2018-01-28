@@ -151,13 +151,7 @@ size_t resource_size(ResHandle handle)
  * 
  */
 void resource_load_system(ResHandle resource_handle, uint8_t *buffer)
-{
-    
-    if (resource_handle.size > xPortGetFreeAppHeapSize())
-    {
-        KERN_LOG("resou", APP_LOG_LEVEL_ERROR, "Ress: malloc fail. Not enough heap for %d", resource_handle.size);
-        return;
-    }
+{    
     flash_read_bytes(REGION_RES_START + RES_START + resource_handle.offset, buffer, resource_handle.size);
 }
 
@@ -217,7 +211,7 @@ uint8_t *resource_fully_load_res_system(ResHandle res_handle)
     
     size_t sz = resource_size(res_handle);
     
-    uint8_t *buffer = app_calloc(1, sz);
+    uint8_t *buffer = calloc(1, sz);
     
     if (buffer == NULL)
     {
@@ -237,7 +231,7 @@ uint8_t *resource_fully_load_res_app(ResHandle res_handle, const struct file *fi
     
     size_t sz = resource_size(res_handle);
  
-    uint8_t *buffer = app_calloc(1, sz);
+    uint8_t *buffer = calloc(1, sz);
     
     if (buffer == NULL)
     {

@@ -19,7 +19,7 @@ static void menu_layer_update_proc(Layer *layer, GContext *nGContext);
 
 MenuLayer *menu_layer_create(GRect frame)
 {
-    MenuLayer *mlayer = (MenuLayer *)app_calloc(1, sizeof(MenuLayer));
+    MenuLayer *mlayer = (MenuLayer *)calloc(1, sizeof(MenuLayer));
     mlayer->layer = layer_create(frame);
     mlayer->scroll_layer = scroll_layer_create(GRect(0, 0, frame.size.w, frame.size.h));
     mlayer->layer->container = mlayer;
@@ -43,8 +43,8 @@ void menu_layer_destroy(MenuLayer *menu)
 {
     scroll_layer_destroy(menu->scroll_layer);
     if (menu->cells_count > 0)
-        app_free(menu->cells);
-    app_free(menu);
+        free(menu->cells);
+    free(menu);
 }
 
 int16_t menu_index_compare(const MenuIndex *a, const MenuIndex *b)
@@ -231,7 +231,7 @@ void menu_layer_reload_data(MenuLayer *menu_layer)
 
         menu_layer->cells_count = cells;
         if (cells > 0)
-           menu_layer->cells = (MenuCellSpan *)app_calloc(cells, sizeof(MenuCellSpan));
+           menu_layer->cells = (MenuCellSpan *)calloc(cells, sizeof(MenuCellSpan));
     }
 
     // generate cells

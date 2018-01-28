@@ -83,7 +83,7 @@ GFont *fonts_load_custom_font(ResHandle *handle, const struct file* file)
  */
 void fonts_unload_custom_font(GFont font)
 {
-    app_free(font);
+    free(font);
 }
 
 #define EQ_FONT(font) (strncmp(key, font, strlen(key)) == 0) return font ## _ID;

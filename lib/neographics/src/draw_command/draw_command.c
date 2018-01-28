@@ -157,7 +157,7 @@ void n_gdraw_command_list_draw(n_GContext * ctx, n_GDrawCommandList * list, n_GP
     nPrvGDrawCommandListDrawContext * context = malloc(sizeof(nPrvGDrawCommandListDrawContext));
     context->ctx = ctx; context->offset = offset;
     n_gdraw_command_list_iterate(list, n_prv_gdraw_command_draw_cb, context);
-    app_free(context);
+    free(context);
 }
 
 /* command list getters */
@@ -258,7 +258,7 @@ n_GDrawCommandImage * n_gdraw_command_image_create_with_resource(uint32_t resour
 n_GDrawCommandImage * n_gdraw_command_image_clone(n_GDrawCommandImage * image) {
     return NULL; } // TODO
 void n_gdraw_command_image_destroy(n_GDrawCommandImage * image) {
-    app_free(image);
+    free(image);
 }
 
 n_GDrawCommandSequence * n_gdraw_command_sequence_create_with_resource(uint32_t resource_id) {
@@ -271,5 +271,5 @@ n_GDrawCommandSequence * n_gdraw_command_sequence_create_with_resource(uint32_t 
 n_GDrawCommandSequence * n_gdraw_command_sequence_clone(n_GDrawCommandSequence * image) {
     return NULL; }
 void n_gdraw_command_sequence_destroy(n_GDrawCommandSequence * sequence) {
-    app_free(sequence);
+    free(sequence);
 }

@@ -13,7 +13,7 @@ void text_layer_draw(struct Layer *layer, GContext *context);
 // Layer Functions
 TextLayer *text_layer_create(GRect bounds)
 {
-    TextLayer* tlayer = app_calloc(1, sizeof(TextLayer));
+    TextLayer* tlayer = calloc(1, sizeof(TextLayer));
     Layer* layer = layer_create(bounds);
     // give the layer a reference back to us
     layer->container = tlayer;
@@ -32,7 +32,7 @@ TextLayer *text_layer_create(GRect bounds)
 void text_layer_destroy(TextLayer *layer)
 {
     layer_destroy(layer->layer);
-    app_free(layer);
+    free(layer);
 }
 
 Layer *text_layer_get_layer(TextLayer *text_layer)

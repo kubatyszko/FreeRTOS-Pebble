@@ -21,7 +21,7 @@ void _gbitmap_draw(GBitmap *bitmap, GRect clip);
 GBitmap *gbitmap_create(GRect frame)
 {
     //Allocate gbitmap
-    GBitmap *gbitmap = app_calloc(1, sizeof(GBitmap));
+    GBitmap *gbitmap = calloc(1, sizeof(GBitmap));
     gbitmap->bounds = frame;
     gbitmap->free_data_on_destroy = true;
     gbitmap->free_palette_on_destroy = true;
@@ -36,11 +36,11 @@ GBitmap *gbitmap_create(GRect frame)
 void gbitmap_destroy(GBitmap *bitmap)
 {
     if (bitmap->free_palette_on_destroy)
-        app_free(bitmap->palette);
+        free(bitmap->palette);
     if (bitmap->free_data_on_destroy)
-        app_free(bitmap->addr);
+        free(bitmap->addr);
         
-    app_free(bitmap);
+    free(bitmap);
     bitmap = NULL;
 }
 
@@ -254,7 +254,7 @@ GColor *gbitmap_get_palette(const GBitmap *bitmap)
  */
 void gbitmap_set_palette(GBitmap *bitmap, GColor *palette, bool free_on_destroy)
 {
-    app_free(bitmap->palette);
+    free(bitmap->palette);
     bitmap->palette = palette;
     bitmap->free_palette_on_destroy = free_on_destroy;
 }
@@ -337,7 +337,7 @@ GBitmap *gbitmap_create_blank(GSize size, GBitmapFormat format)
     GRect gr = { .size = size, .origin.x = 0, .origin.y = 0 };
     GBitmap *bitmap = gbitmap_create(gr);
     bitmap->format = format;
-    bitmap->addr = app_calloc(1, size.w * size.h);
+    bitmap->addr = calloc(1, size.w * size.h);
     
     if (bitmap->addr == NULL)
     {

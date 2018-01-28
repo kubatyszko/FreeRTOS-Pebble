@@ -15,7 +15,7 @@ void layer_insert_node(Layer *layer_to_insert, Layer *sibling_layer, bool below)
 // Layer Functions
 Layer *layer_create(GRect frame)
 {
-    Layer* layer = app_calloc(1, sizeof(Layer));
+    Layer* layer = calloc(1, sizeof(Layer));
     if (layer == NULL)
     {
         SYS_LOG("layer", APP_LOG_LEVEL_ERROR, "NO MEMORY FOR LAYER!");
@@ -32,7 +32,7 @@ Layer *layer_create(GRect frame)
 Layer *layer_create_with_data(GRect frame, size_t data_size)
 {
     Layer *layer = layer_create(frame);
-    layer->callback_data = app_calloc(1, data_size);
+    layer->callback_data = calloc(1, data_size);
     
     return layer;
 }
@@ -272,7 +272,7 @@ void layer_delete_tree(Layer *layer)
     {
         layer_delete_tree(layer->child);
         layer_delete_tree(layer->sibling);
-        app_free(layer);
+        free(layer);
     }
 }
 

@@ -32,7 +32,7 @@ void _app_timer_callback(CoreTimer *_timer)
 
 AppTimer *app_timer_register(uint32_t ms, AppTimerCallback cb, void *priv)
 {
-    AppTimer *timer = app_calloc(1, sizeof(*timer));
+    AppTimer *timer = calloc(1, sizeof(*timer));
     
     if (!timer)
         return NULL;
@@ -63,5 +63,5 @@ void app_timer_cancel(AppTimer *timer)
 {
     if (timer->scheduled)
         appmanager_timer_remove(&timer->timer);
-    app_free(timer);
+    free(timer);
 }
