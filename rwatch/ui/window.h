@@ -50,21 +50,14 @@ typedef struct Window
     bool is_render_scheduled;
     //bool on_screen : 1;
     bool is_loaded;
-    window_node *node;
     //bool overrides_back_button : 1;
     //bool is_fullscreen : 1;
     //const char *debug_name;
 } Window;
 
-struct window_node {
-    Window *window;
-    struct window_node *previous;
-    struct window_node *next;
-};
-
-
 // Window management
 Window *window_create();
+Window *window_create_system();
 void window_destroy(Window *window) ;
 void window_set_click_config_provider(Window *window, ClickConfigProvider click_config_provider);
 void window_set_click_config_provider_with_context(Window *window, ClickConfigProvider click_config_provider, void *context);
