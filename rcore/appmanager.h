@@ -110,6 +110,7 @@ typedef struct AppTypeHeader {
 #define APP_QUIT         1
 #define APP_TICK         2
 #define APP_DRAW         3
+#define APP_NOTIFY       4
 
 #define APP_TYPE_SYSTEM  0
 #define APP_TYPE_FACE    1
@@ -128,7 +129,4 @@ App *app_manager_get_apps_head();
 
 void rbl_window_load_proc(void);
 void app_event_loop(void);
-
-
-
-
+bool appmanager_current_task_is_app(void);

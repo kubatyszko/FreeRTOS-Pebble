@@ -1,0 +1,3 @@
+[submodule "lib/btstack/btstack"]
+	path = lib/btstack/btstack
+	url = https://github.com/ginge/btstack.git

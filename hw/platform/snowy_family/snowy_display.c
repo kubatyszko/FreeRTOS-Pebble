@@ -18,6 +18,7 @@
 #include <stm32f4xx_tim.h>
 #include "stm32_power.h"
 #include "platform_config.h"
+#include "rebble_memory.h"
 #include "resource.h"
 
 #define ROW_LENGTH    DISPLAY_COLS
@@ -379,13 +380,13 @@ void DMA2_Stream5_IRQHandler()
  * GPIO interrupt. We then chain call the ISR handler from here
  * and clear the interrupt
  */
-void EXTI15_10_IRQHandler(void)
+/*void EXTI15_10_IRQHandler(void)
 {
     if (EXTI_GetITStatus(EXTI_Line10) != RESET)
     {   
         EXTI_ClearITPendingBit(EXTI_Line10);
     }
-}
+}*/
 
 /* When reset goes high, sample the CS input to see what state we should be in
  * if CS is low, expect new FPGA programming to arrive
@@ -669,6 +670,7 @@ void _snowy_display_full_init(void)
     _snowy_display_send_frame_slow();
 
     // enable interrupts now we have the splash up
+    // Interrupt handler is in with bluetooth :/
     _snowy_display_init_intn();   
     _snowy_display_release_clocks();
 }

@@ -331,6 +331,15 @@ void appmanager_post_draw_message(void)
     xQueueSendToBack(_app_message_queue, &am, (TickType_t)10);
 }
 
+void appmanager_post_notification(void)
+{
+    AppMessage am = (AppMessage) {
+        .message_type_id = APP_NOTIFY
+    };
+    xQueueSendToBack(_app_message_queue, &am, (TickType_t)10);
+}
+
+
 /* Always adds to the running app's queue.  Note that this is only
  * reasonable to do from the app thread: otherwise, you can race with the
  * check for the timer head.  */
@@ -404,6 +413,9 @@ void app_event_loop(void)
     // redraw
     window_draw();
     
+    /* Request a re-send of any messages we have not processed */
+    notification_msg_resend();
+    
     // block forever
     for ( ;; )
     {
@@ -448,6 +460,13 @@ void app_event_loop(void)
             else if (data.message_type_id == APP_DRAW)
             {
                 window_draw();
+            }
+            else if (data.message_type_id == APP_NOTIFY)
+            {
+                // draw our notification highjack stylee
+                SYS_LOG("app", APP_LOG_LEVEL_INFO, "Notification");
+                // cheesy
+                appmanager_app_start("Notification");
             }
         } else {
             /* We woke up because we hit a timer expiry.  Dequeue first,
