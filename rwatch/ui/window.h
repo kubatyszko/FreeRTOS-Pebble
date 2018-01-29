@@ -57,7 +57,6 @@ typedef struct Window
 
 // Window management
 Window *window_create();
-Window *window_create_system();
 void window_destroy(Window *window) ;
 void window_set_click_config_provider(Window *window, ClickConfigProvider click_config_provider);
 void window_set_click_config_provider_with_context(Window *window, ClickConfigProvider click_config_provider, void *context);
@@ -84,8 +83,6 @@ bool window_stack_contains_window(Window *window);
 Window * window_stack_get_top_window(void);
 
 void window_draw();
-
-
 void rbl_window_load_proc(void);
 void rbl_window_load_click_config(void);
 
