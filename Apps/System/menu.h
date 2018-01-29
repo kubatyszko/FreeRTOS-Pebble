@@ -22,6 +22,7 @@ typedef struct MenuItem
     char *sub_text;
     uint16_t image_res_id;
     MenuItemCallback on_select;
+    uint8_t *context;
 } MenuItem;
 
 #define MenuItem(text, sub_text, image, on_select) ((MenuItem) { text, sub_text, image, on_select })
